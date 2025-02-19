@@ -768,7 +768,7 @@ export class ShadowCss {
     // In Android browser, the lastIndex is not reset when the regex is used in String.replace()
     _polyfillHostRe.lastIndex = 0;
     if (_polyfillHostRe.test(selector)) {
-      const replaceBy = `[${hostSelector}]`;
+      const replaceBy = `.${hostSelector}`;
       let result = selector;
       while (result.match(_polyfillHostNoCombinatorRe)) {
         result = result.replace(_polyfillHostNoCombinatorRe, (_hnc, selector) => {
@@ -802,7 +802,7 @@ export class ShadowCss {
     const isRe = /\[is=([^\]]*)\]/g;
     scopeSelector = scopeSelector.replace(isRe, (_: string, ...parts: string[]) => parts[0]);
 
-    const attrName = `[${scopeSelector}]`;
+    const attrName = `.${scopeSelector}`;
 
     const _scopeSelectorPart = (p: string) => {
       let scopedP = p.trim();

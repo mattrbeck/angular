@@ -3412,7 +3412,7 @@ describe('platform-server full application hydration integration', () => {
 
         const html = await ssr(SimpleComponent);
         const ssrContents = getAppContents(html);
-        expect(ssrContents).toContain('<app ngskiphydration="">');
+        expect(ssrContents).toMatch(/<app class="_nghost-\S+" ngskiphydration="">/);
       });
 
       it(
@@ -3454,7 +3454,7 @@ describe('platform-server full application hydration integration', () => {
           const ssrContents = getAppContents(html);
 
           expect(ssrContents).toContain('<app ngh="0">');
-          expect(ssrContents).toContain('<shadow-dom ngskiphydration="">');
+          expect(ssrContents).toMatch(/<shadow-dom class="_nghost-\S+" ngskiphydration="">/);
           expect(ssrContents).toContain('<regular id="1" ngh="0">');
           expect(ssrContents).toContain('<regular id="2" ngh="0">');
         },

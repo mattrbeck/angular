@@ -11,13 +11,13 @@ import {shim} from './utils';
 describe('ShadowCss, polyfills', () => {
   it('should support polyfill-next-selector', () => {
     let css = shim("polyfill-next-selector {content: 'x > y'} z {}", 'contenta');
-    expect(css).toEqualCss('x[contenta] > y[contenta]{}');
+    expect(css).toEqualCss('x.contenta > y.contenta{}');
 
     css = shim('polyfill-next-selector {content: "x > y"} z {}', 'contenta');
-    expect(css).toEqualCss('x[contenta] > y[contenta]{}');
+    expect(css).toEqualCss('x.contenta > y.contenta{}');
 
     css = shim(`polyfill-next-selector {content: 'button[priority="1"]'} z {}`, 'contenta');
-    expect(css).toEqualCss('button[priority="1"][contenta]{}');
+    expect(css).toEqualCss('button[priority="1"].contenta{}');
   });
 
   it('should support polyfill-unscoped-rule', () => {
@@ -43,12 +43,12 @@ describe('ShadowCss, polyfills', () => {
 
   it('should support polyfill-rule', () => {
     let css = shim("polyfill-rule {content: ':host.foo .bar';color: blue;}", 'contenta', 'a-host');
-    expect(css).toEqualCss('.foo[a-host] .bar[contenta] {;color:blue;}');
+    expect(css).toEqualCss('.foo.a-host .bar.contenta {;color:blue;}');
 
     css = shim('polyfill-rule {content: ":host.foo .bar";color:blue;}', 'contenta', 'a-host');
-    expect(css).toEqualCss('.foo[a-host] .bar[contenta] {;color:blue;}');
+    expect(css).toEqualCss('.foo.a-host .bar.contenta {;color:blue;}');
 
     css = shim(`polyfill-rule {content: 'button[priority="1"]'}`, 'contenta', 'a-host');
-    expect(css).toEqualCss('button[priority="1"][contenta] {}');
+    expect(css).toEqualCss('button[priority="1"].contenta {}');
   });
 });

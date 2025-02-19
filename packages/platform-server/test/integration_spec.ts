@@ -976,7 +976,7 @@ class HiddenModule {}
               });
           const output = await bootstrap;
           expect(output).toMatch(
-            /<app ng-version="0.0.0-PLACEHOLDER" _nghost-ng-c\d+="" ng-server-context="ssg">/,
+            /<app ng-version="0.0.0-PLACEHOLDER" class="_nghost-ng-c\d+" ng-server-context="ssg">/,
           );
         });
 

@@ -47,8 +47,8 @@ const SOURCEMAP_URL_REGEXP = /\/\*#\s*sourceMappingURL=(.+?)\s*\*\//;
 const PROTOCOL_REGEXP = /^https?:/;
 
 export const COMPONENT_VARIABLE = '%COMP%';
-export const HOST_ATTR = `_nghost-${COMPONENT_VARIABLE}`;
-export const CONTENT_ATTR = `_ngcontent-${COMPONENT_VARIABLE}`;
+export const HOST_CLASS = `_nghost-${COMPONENT_VARIABLE}`;
+export const CONTENT_CLASS = `_ngcontent-${COMPONENT_VARIABLE}`;
 
 /**
  * The default value for the `REMOVE_STYLES_ON_COMPONENT_DESTROY` DI token.
@@ -70,12 +70,12 @@ export const REMOVE_STYLES_ON_COMPONENT_DESTROY = new InjectionToken<boolean>(
   },
 );
 
-export function shimContentAttribute(componentShortId: string): string {
-  return CONTENT_ATTR.replace(COMPONENT_REGEX, componentShortId);
+export function shimContentClass(componentShortId: string): string {
+  return CONTENT_CLASS.replace(COMPONENT_REGEX, componentShortId);
 }
 
-export function shimHostAttribute(componentShortId: string): string {
-  return HOST_ATTR.replace(COMPONENT_REGEX, componentShortId);
+export function shimHostClass(componentShortId: string): string {
+  return HOST_CLASS.replace(COMPONENT_REGEX, componentShortId);
 }
 
 export function shimStylesContent(compId: string, styles: string[]): string[] {
@@ -604,8 +604,8 @@ class NoneEncapsulationDomRenderer extends DefaultDomRenderer2 {
 }
 
 class EmulatedEncapsulationDomRenderer2 extends NoneEncapsulationDomRenderer {
-  private contentAttr: string;
-  private hostAttr: string;
+  private contentClass: string;
+  private hostClass: string;
 
   constructor(
     eventManager: EventManager,
@@ -630,18 +630,18 @@ class EmulatedEncapsulationDomRenderer2 extends NoneEncapsulationDomRenderer {
       tracingService,
       compId,
     );
-    this.contentAttr = shimContentAttribute(compId);
-    this.hostAttr = shimHostAttribute(compId);
+    this.contentClass = shimContentClass(compId);
+    this.hostClass = shimHostClass(compId);
   }
 
   applyToHost(element: any): void {
     this.applyStyles();
-    this.setAttribute(element, this.hostAttr, '');
+    super.addClass(element, this.hostClass);
   }
 
   override createElement(parent: any, name: string): Element {
     const el = super.createElement(parent, name);
-    super.setAttribute(el, this.contentAttr, '');
+    super.addClass(el, this.contentClass);
     return el;
   }
 }

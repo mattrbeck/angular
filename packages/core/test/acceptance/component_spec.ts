@@ -186,7 +186,7 @@ describe('component', () => {
       const fixture = TestBed.createComponent(WrapperComponent);
       fixture.detectChanges();
       expect(fixture.nativeElement.innerHTML).toMatch(
-        /<encapsulated _nghost-[a-z\-]+(\d+)="">foo<leaf _ngcontent-[a-z\-]+\1=""><span>bar<\/span><\/leaf><\/encapsulated>/,
+        /<encapsulated class="_nghost-[a-z\-]+(\d+)">foo<leaf class="_ngcontent-[a-z\-]+\1"><span>bar<\/span><\/leaf><\/encapsulated>/,
       );
     });
 
@@ -196,7 +196,9 @@ describe('component', () => {
       const html = fixture.nativeElement.outerHTML;
       const match = html.match(/_nghost-([a-z\-]+\d+)/);
       expect(match).toBeDefined();
-      expect(html).toMatch(new RegExp(`<leaf _ngcontent-${match[1]}=""><span>bar</span></leaf>`));
+      expect(html).toMatch(
+        new RegExp(`<leaf class="_ngcontent-${match[1]}"><span>bar</span></leaf>`),
+      );
     });
 
     it('should encapsulate host and children with different attributes', () => {
@@ -211,9 +213,9 @@ describe('component', () => {
       expect(match).toBeDefined();
       expect(match.length).toEqual(2);
       expect(html).toMatch(
-        `<leaf ${match[0].replace('_nghost', '_ngcontent')}="" ${
+        `<leaf class="${match[0].replace('_nghost', '_ngcontent')} ${
           match[1]
-        }=""><span ${match[1].replace('_nghost', '_ngcontent')}="">bar</span></leaf></div>`,
+        }"><span class="${match[1].replace('_nghost', '_ngcontent')}">bar</span></leaf></div>`,
       );
     });
 
@@ -224,8 +226,8 @@ describe('component', () => {
       const fixture = TestBed.createComponent(EncapsulatedComponent);
       fixture.detectChanges();
       const html = fixture.nativeElement.outerHTML;
-      expect(html).not.toContain('<encapsulated _nghost-');
-      expect(html).not.toContain('<leaf _ngcontent-');
+      expect(html).not.toContain('<encapsulated class="_nghost-');
+      expect(html).not.toContain('<leaf class="_ngcontent-');
     });
 
     it('should be off for a component with empty styles', () => {
@@ -235,8 +237,8 @@ describe('component', () => {
       const fixture = TestBed.createComponent(EncapsulatedComponent);
       fixture.detectChanges();
       const html = fixture.nativeElement.outerHTML;
-      expect(html).not.toContain('<encapsulated _nghost-');
-      expect(html).not.toContain('<leaf _ngcontent-');
+      expect(html).not.toContain('<encapsulated class="_nghost-');
+      expect(html).not.toContain('<leaf class="_ngcontent-');
     });
   });
 
@@ -570,9 +572,7 @@ describe('component', () => {
     const secondParentEl: HTMLElement = fixture.nativeElement.querySelector('parent-comp');
     const elementFromRenderer: HTMLElement = fixture.nativeElement.querySelector('p');
     const getNgContentAttr = (element: HTMLElement) => {
-      return Array.from(element.attributes)
-        .map((a) => a.name)
-        .find((a) => /ngcontent/.test(a));
+      return Array.from(element.classList).find((c) => /ngcontent/.test(c));
     };
 
     const hostNgContentAttr = getNgContentAttr(secondParentEl);

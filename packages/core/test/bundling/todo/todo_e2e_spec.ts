@@ -27,7 +27,7 @@ describe('functional test for todo', () => {
 
           await bootstrapApp();
 
-          const styleContent = findStyleTextForSelector('.todo-list\\[_ngcontent-[a-z]+-\\w+\\]');
+          const styleContent = findStyleTextForSelector('\\.todo-list\\._ngcontent-[a-z]+-\\w+');
           expect(styleContent).toMatch(/font-weight:\s*bold;/);
           expect(styleContent).toMatch(/color:\s*#d9d9d9;/);
         }),

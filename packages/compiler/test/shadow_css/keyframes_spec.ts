@@ -272,24 +272,24 @@ describe('ShadowCss, keyframes and animations', () => {
   it('should correctly process animations defined without any prefixed space', () => {
     let css = '.test{display: flex;animation:foo 1s forwards;} @keyframes foo {}';
     let expected =
-      '.test[host-a]{display: flex;animation:host-a_foo 1s forwards;} @keyframes host-a_foo {}';
+      '.test.host-a{display: flex;animation:host-a_foo 1s forwards;} @keyframes host-a_foo {}';
     expect(shim(css, 'host-a')).toEqual(expected);
     css = '.test{animation:foo 2s forwards;} @keyframes foo {}';
-    expected = '.test[host-a]{animation:host-a_foo 2s forwards;} @keyframes host-a_foo {}';
+    expected = '.test.host-a{animation:host-a_foo 2s forwards;} @keyframes host-a_foo {}';
     expect(shim(css, 'host-a')).toEqual(expected);
     css = 'button {display: block;animation-name: foobar;} @keyframes foobar {}';
     expected =
-      'button[host-a] {display: block;animation-name: host-a_foobar;} @keyframes host-a_foobar {}';
+      'button.host-a {display: block;animation-name: host-a_foobar;} @keyframes host-a_foobar {}';
     expect(shim(css, 'host-a')).toEqual(expected);
   });
 
   it('should correctly process keyframes defined without any prefixed space', () => {
     let css = '.test{display: flex;animation:bar 1s forwards;}@keyframes bar {}';
     let expected =
-      '.test[host-a]{display: flex;animation:host-a_bar 1s forwards;}@keyframes host-a_bar {}';
+      '.test.host-a{display: flex;animation:host-a_bar 1s forwards;}@keyframes host-a_bar {}';
     expect(shim(css, 'host-a')).toEqual(expected);
     css = '.test{animation:bar 2s forwards;}@-webkit-keyframes bar {}';
-    expected = '.test[host-a]{animation:host-a_bar 2s forwards;}@-webkit-keyframes host-a_bar {}';
+    expected = '.test.host-a{animation:host-a_bar 2s forwards;}@-webkit-keyframes host-a_bar {}';
     expect(shim(css, 'host-a')).toEqual(expected);
   });
 

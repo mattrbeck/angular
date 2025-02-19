@@ -11,24 +11,24 @@ import {shim} from './utils';
 describe('ShadowCss, ng-deep', () => {
   it('should handle /deep/', () => {
     const css = shim('x /deep/ y {}', 'contenta');
-    expect(css).toEqualCss('x[contenta] y {}');
+    expect(css).toEqualCss('x.contenta y {}');
   });
 
   it('should handle >>>', () => {
     const css = shim('x >>> y {}', 'contenta');
-    expect(css).toEqualCss('x[contenta] y {}');
+    expect(css).toEqualCss('x.contenta y {}');
   });
 
   it('should handle ::ng-deep', () => {
     let css = '::ng-deep y {}';
     expect(shim(css, 'contenta')).toEqualCss('y {}');
     css = 'x ::ng-deep y {}';
-    expect(shim(css, 'contenta')).toEqualCss('x[contenta] y {}');
+    expect(shim(css, 'contenta')).toEqualCss('x.contenta y {}');
     css = ':host > ::ng-deep .x {}';
-    expect(shim(css, 'contenta', 'h')).toEqualCss('[h] > .x {}');
+    expect(shim(css, 'contenta', 'h')).toEqualCss('.h > .x {}');
     css = ':host ::ng-deep > .x {}';
-    expect(shim(css, 'contenta', 'h')).toEqualCss('[h] > .x {}');
+    expect(shim(css, 'contenta', 'h')).toEqualCss('.h > .x {}');
     css = ':host > ::ng-deep > .x {}';
-    expect(shim(css, 'contenta', 'h')).toEqualCss('[h] > > .x {}');
+    expect(shim(css, 'contenta', 'h')).toEqualCss('.h > > .x {}');
   });
 });

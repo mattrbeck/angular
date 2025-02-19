@@ -126,7 +126,7 @@ function writeDirectClass(renderer: Renderer, element: RElement, newValue: strin
     // There are tests in `google3` which expect `element.getAttribute('class')` to be `null`.
     renderer.removeAttribute(element, 'class');
   } else {
-    renderer.setAttribute(element, 'class', newValue);
+    renderer.setAttribute(element, 'class', element.getAttribute('class') + ' ' + newValue);
   }
 }
 

@@ -34,8 +34,8 @@ import {makeBindingParser} from './template';
 import {asLiteral, conditionallyCreateDirectiveBindingLiteral, DefinitionMap} from './util';
 
 const COMPONENT_VARIABLE = '%COMP%';
-const HOST_ATTR = `_nghost-${COMPONENT_VARIABLE}`;
-const CONTENT_ATTR = `_ngcontent-${COMPONENT_VARIABLE}`;
+const HOST_CLASS = `_nghost-${COMPONENT_VARIABLE}`;
+const CONTENT_CLASS = `_ngcontent-${COMPONENT_VARIABLE}`;
 
 function baseDirectiveFields(
   meta: R3DirectiveMetadata,
@@ -282,7 +282,7 @@ export function compileComponentFromMetadata(
   if (meta.styles && meta.styles.length) {
     const styleValues =
       meta.encapsulation == core.ViewEncapsulation.Emulated
-        ? compileStyles(meta.styles, CONTENT_ATTR, HOST_ATTR)
+        ? compileStyles(meta.styles, CONTENT_CLASS, HOST_CLASS)
         : meta.styles;
     const styleNodes = styleValues.reduce((result, style) => {
       if (style.trim().length > 0) {
@@ -631,11 +631,11 @@ function compileStyles(styles: string[], selector: string, hostSelector: string)
 export function encapsulateStyle(style: string, componentIdentifier?: string): string {
   const shadowCss = new ShadowCss();
   const selector = componentIdentifier
-    ? CONTENT_ATTR.replace(COMPONENT_VARIABLE, componentIdentifier)
-    : CONTENT_ATTR;
+    ? CONTENT_CLASS.replace(COMPONENT_VARIABLE, componentIdentifier)
+    : CONTENT_CLASS;
   const hostSelector = componentIdentifier
-    ? HOST_ATTR.replace(COMPONENT_VARIABLE, componentIdentifier)
-    : HOST_ATTR;
+    ? HOST_CLASS.replace(COMPONENT_VARIABLE, componentIdentifier)
+    : HOST_CLASS;
   return shadowCss.shimCssText(style, selector, hostSelector);
 }
 

@@ -9028,7 +9028,7 @@ runInEachFileSystem((os: string) => {
         env.driveMain();
         const jsContents = env.getContents('test.js');
         expect(jsContents).toContain(
-          'styles: ["h2[_ngcontent-%COMP%] {width: 10px}", "h1[_ngcontent-%COMP%] {font-size: larger}"]',
+          'styles: ["h2._ngcontent-%COMP% {width: 10px}", "h1._ngcontent-%COMP% {font-size: larger}"]',
         );
       });
 
@@ -9049,7 +9049,7 @@ runInEachFileSystem((os: string) => {
 
         env.driveMain();
         const jsContents = env.getContents('test.js');
-        expect(jsContents).toContain('styles: ["h1[_ngcontent-%COMP%] {font-size: larger}"]');
+        expect(jsContents).toContain('styles: ["h1._ngcontent-%COMP% {font-size: larger}"]');
       });
 
       it('should share same styles declared in different components in the same file', () => {
@@ -9088,7 +9088,7 @@ runInEachFileSystem((os: string) => {
         // Verify that long styles present in both components are extracted to a
         // separate var.
         expect(jsContents).toContain(
-          '_c0 = "div[_ngcontent-%COMP%] { background: url(/some-very-very-long-path.png); }";',
+          '_c0 = "div._ngcontent-%COMP% { background: url(/some-very-very-long-path.png); }";',
         );
 
         expect(jsContents).toContain(
@@ -9096,13 +9096,13 @@ runInEachFileSystem((os: string) => {
             // This style is present in both components, but was not extracted into
             // a separate var since it doesn't reach length threshold (50 chars) in
             // `ConstantPool`.
-            '"span[_ngcontent-%COMP%] { font-size: larger; }", ' +
+            '"span._ngcontent-%COMP% { font-size: larger; }", ' +
             // Style that is present in both components, but reaches length
             // threshold - extracted to a separate var.
             '_c0, ' +
             // Style that is unique to this component, but that reaches length
             // threshold - remains a string in the `styles` array.
-            '"img[_ngcontent-%COMP%] { background: url(/a/some-very-very-long-path.png); }"]',
+            '"img._ngcontent-%COMP% { background: url(/a/some-very-very-long-path.png); }"]',
         );
 
         expect(jsContents).toContain(
@@ -9110,13 +9110,13 @@ runInEachFileSystem((os: string) => {
             // This style is present in both components, but was not extracted into
             // a separate var since it doesn't reach length threshold (50 chars) in
             // `ConstantPool`.
-            '"span[_ngcontent-%COMP%] { font-size: larger; }", ' +
+            '"span._ngcontent-%COMP% { font-size: larger; }", ' +
             // Style that is present in both components, but reaches length
             // threshold - extracted to a separate var.
             '_c0, ' +
             // Style that is unique to this component, but that reaches length
             // threshold - remains a string in the `styles` array.
-            '"img[_ngcontent-%COMP%] { background: url(/b/some-very-very-long-path.png); }"]',
+            '"img._ngcontent-%COMP% { background: url(/b/some-very-very-long-path.png); }"]',
         );
       });
 
@@ -9160,7 +9160,7 @@ runInEachFileSystem((os: string) => {
         // large strings. See: https://github.com/angular/angular/pull/38253.
         expect(jsContents).toContain(
           '_c0 = function () {' +
-            ' return "div[_ngcontent-%COMP%] {' +
+            ' return "div._ngcontent-%COMP% {' +
             ' background: url(/some-very-very-long-path.png);' +
             ' }";' +
             ' };',
@@ -9169,7 +9169,7 @@ runInEachFileSystem((os: string) => {
         expect(jsContents).toContain(
           'styles: [' +
             // Check styles for component A.
-            '"div[_ngcontent-%COMP%] { background: url(/a.png); }", ' +
+            '"div._ngcontent-%COMP% { background: url(/a.png); }", ' +
             // Large string should be called from function definition.
             '_c0()]',
         );
@@ -9177,7 +9177,7 @@ runInEachFileSystem((os: string) => {
         expect(jsContents).toContain(
           'styles: [' +
             // Check styles for component B.
-            '"div[_ngcontent-%COMP%] { background: url(/b.png); }", ' +
+            '"div._ngcontent-%COMP% { background: url(/b.png); }", ' +
             // Large string should be called from function definition.
             '_c0()]',
         );
@@ -9199,7 +9199,7 @@ runInEachFileSystem((os: string) => {
 
         env.driveMain();
         const jsContents = env.getContents('test.js');
-        expect(jsContents).toContain('styles: ["h2[_ngcontent-%COMP%] {width: 10px}"]');
+        expect(jsContents).toContain('styles: ["h2._ngcontent-%COMP% {width: 10px}"]');
       });
 
       it('should process `styleUrl`', () => {
@@ -9221,7 +9221,7 @@ runInEachFileSystem((os: string) => {
 
         const jsContents = env.getContents('test.js');
         expect(jsContents).not.toContain('styleUrl');
-        expect(jsContents).toContain('styles: ["h2[_ngcontent-%COMP%] {width: 10px}"]');
+        expect(jsContents).toContain('styles: ["h2._ngcontent-%COMP% {width: 10px}"]');
       });
 
       it('should produce a diagnostic if both `styleUrls` and `styleUrl` are defined', () => {
