@@ -31,7 +31,7 @@ const builtinNamespaceImportRe = /^node:/;
  */
 export async function resolve(specifier, context, nextResolve) {
   const interopAttempts = [];
-  if (explicitJsExtensionRe.test(specifier)) {
+  if (explicitJsExtensionRe.test(specifier) && specifier !== './postcss.js') {
     interopAttempts.push(specifier.replace(explicitJsExtensionRe, '.mjs'));
   }
 

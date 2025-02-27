@@ -57,9 +57,9 @@ Did you run and wait for 'resolveComponentResources()'?`.trim(),
   describe('resolution', () => {
     const URLS: {[url: string]: Promise<string>} = {
       'test://content': Promise.resolve('content'),
-      'test://style': Promise.resolve('style'),
-      'test://style1': Promise.resolve('style1'),
-      'test://style2': Promise.resolve('style2'),
+      'test://style': Promise.resolve('style {}'),
+      'test://style1': Promise.resolve('style1 {}'),
+      'test://style2': Promise.resolve('style2 {}'),
     };
     let resourceFetchCount: number;
     function testResolver(url: string): Promise<string> {
@@ -85,7 +85,7 @@ Did you run and wait for 'resolveComponentResources()'?`.trim(),
       await resolveComponentResources(testResolver);
       expect(MyComponent.ɵcmp).toBeDefined();
       expect(metadata.styleUrls).toBe(undefined);
-      expect(metadata.styles).toEqual(['style1', 'style2']);
+      expect(metadata.styles).toEqual(['style1 {}', 'style2 {}']);
       expect(resourceFetchCount).toBe(2);
     });
 
@@ -96,7 +96,7 @@ Did you run and wait for 'resolveComponentResources()'?`.trim(),
       await resolveComponentResources(testResolver);
       expect(MyComponent.ɵcmp).toBeDefined();
       expect(metadata.styleUrls).toBe(undefined);
-      expect(metadata.styles).toEqual(['style1', 'style1']);
+      expect(metadata.styles).toEqual(['style1 {}', 'style1 {}']);
       expect(resourceFetchCount).toBe(1);
     });
 
@@ -151,7 +151,7 @@ Did you run and wait for 'resolveComponentResources()'?`.trim(),
       await resolveComponentResources(testResolver);
       expect(MyComponent.ɵcmp).toBeDefined();
       expect(metadata.styleUrl).toBe(undefined);
-      expect(metadata.styles).toEqual(['style']);
+      expect(metadata.styles).toEqual(['style {}']);
       expect(resourceFetchCount).toBe(1);
     });
 
