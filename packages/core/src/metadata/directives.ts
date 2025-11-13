@@ -607,6 +607,7 @@ export interface Component extends Directive {
    *                                 a native Shadow DOM CSS encapsulation behavior.
    * - `ViewEncapsulation.None`: Apply component styles globally without any sort of encapsulation.
    * - `ViewEncapsulation.ShadowDom`: Use the browser's native Shadow DOM API to encapsulate styles.
+   * - `ViewEncapsulation.Scope`: Use the browser's @scope API to encapsulate styles.
    *
    * If not supplied, the value is taken from the `CompilerOptions`
    * which defaults to `ViewEncapsulation.Emulated`.

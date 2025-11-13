@@ -242,6 +242,7 @@ export interface R3ComponentMetadata<DeclarationT extends R3TemplateDependency>
    *                                 a native Shadow DOM CSS encapsulation behavior.
    * - `ViewEncapsulation.None`: Apply component styles globally without any sort of encapsulation.
    * - `ViewEncapsulation.ShadowDom`: Use the browser's native Shadow DOM API to encapsulate styles.
+   * - `ViewEncapsulation.Scope`: Use the browser's @scope API to encapsulate styles.
    */
   encapsulation: ViewEncapsulation;
 

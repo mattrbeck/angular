@@ -286,7 +286,7 @@ let _locateOrCreateElementNode: typeof locateOrCreateElementNodeImpl = (
   index: number,
 ) => {
   lastNodeWasCreated(true);
-  return createElementNode(lView[RENDERER], name, getNamespace());
+  return createElementNode(lView[RENDERER], name, getNamespace(), isDirectiveHost(tNode));
 };
 
 /**

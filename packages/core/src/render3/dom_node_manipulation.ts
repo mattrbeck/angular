@@ -36,8 +36,9 @@ export function createElementNode(
   renderer: Renderer,
   name: string,
   namespace: string | null,
+  isDirectiveHost: boolean = false,
 ): RElement {
-  return renderer.createElement(name, namespace);
+  return renderer.createElement(name, namespace, isDirectiveHost);
 }
 
 /**

@@ -347,6 +347,7 @@ export enum ViewEncapsulation {
   None = 2,
   ShadowDom = 3,
   ExperimentalIsolatedShadowDom = 4,
+  Scope = 5,
 }
 
 export type ChangeDetectionStrategy = number;

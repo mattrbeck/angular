@@ -298,7 +298,9 @@ export function compileComponentFromMetadata(
     const styleValues =
       meta.encapsulation == core.ViewEncapsulation.Emulated
         ? compileStyles(meta.styles, CONTENT_ATTR, HOST_ATTR)
-        : meta.styles;
+        : meta.encapsulation == core.ViewEncapsulation.Scope
+          ? compileStylesScope(meta.styles, HOST_ATTR)
+          : meta.styles;
     const styleNodes = styleValues.reduce((result, style) => {
       if (style.trim().length > 0) {
         result.push(constantPool.getConstLiteral(o.literal(style)));
@@ -632,6 +634,14 @@ function compileStyles(styles: string[], selector: string, hostSelector: string)
   return styles.map((style) => {
     return shadowCss!.shimCssText(style, selector, hostSelector);
   });
+}
+
+function compileStylesScope(styles: string[], hostSelector: string): string[] {
+  // Scopes selectors between the host and nested directive host elements. The @scope limit is
+  // exclusive, so we select `> *` to make the limit inclusive.
+  return styles.map(
+    (style) => `@scope ([${hostSelector}]) to ([_ng-scope-limit] > *) {` + style + '}',
+  );
 }
 
 /**

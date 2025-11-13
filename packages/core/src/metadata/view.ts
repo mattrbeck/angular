@@ -52,4 +52,11 @@ export enum ViewEncapsulation {
    * @experimental 21.0
    */
   ExperimentalIsolatedShadowDom = 4,
+
+  /**
+   * Uses the browser's @scope to encapsulate CSS styles between the host and nested components.
+   * This means that stylesheets can also utilize the `:scope` selector natively.
+   * TODO: Decide whether we still want to rewrite animation names, etc.
+   */
+  Scope = 5,
 }

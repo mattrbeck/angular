@@ -131,7 +131,10 @@ export function addBaseHrefToCssSourceMap(baseHref: string, styles: string[]): s
 export class DomRendererFactory2 implements RendererFactory2, OnDestroy {
   private readonly rendererByCompId = new Map<
     string,
-    EmulatedEncapsulationDomRenderer2 | NoneEncapsulationDomRenderer
+    | EmulatedEncapsulationDomRenderer2
+    | ShadowDomRenderer
+    | ScopeEncapsulationDomRenderer
+    | NoneEncapsulationDomRenderer
   >();
   private readonly defaultRenderer: Renderer2;
   private readonly platformIsServer: boolean;
@@ -177,6 +180,8 @@ export class DomRendererFactory2 implements RendererFactory2, OnDestroy {
     // Renderers have different logic due to different encapsulation behaviours.
     // Ex: for emulated, an attribute is added to the element.
     if (renderer instanceof EmulatedEncapsulationDomRenderer2) {
+      renderer.applyToHost(element);
+    } else if (renderer instanceof ScopeEncapsulationDomRenderer) {
       renderer.applyToHost(element);
     } else if (renderer instanceof NoneEncapsulationDomRenderer) {
       renderer.applyStyles();
@@ -235,6 +240,19 @@ export class DomRendererFactory2 implements RendererFactory2, OnDestroy {
             platformIsServer,
             tracingService,
           );
+        case ViewEncapsulation.Scope:
+          renderer = new ScopeEncapsulationDomRenderer(
+            eventManager,
+            sharedStylesHost,
+            type,
+            this.appId,
+            removeStylesOnCompDestroy,
+            doc,
+            ngZone,
+            platformIsServer,
+            tracingService,
+          );
+          break;
 
         default:
           renderer = new NoneEncapsulationDomRenderer(
@@ -671,6 +689,53 @@ class EmulatedEncapsulationDomRenderer2 extends NoneEncapsulationDomRenderer {
   override createElement(parent: any, name: string): Element {
     const el = super.createElement(parent, name);
     super.setAttribute(el, this.contentAttr, '');
+    return el;
+  }
+}
+
+class ScopeEncapsulationDomRenderer extends NoneEncapsulationDomRenderer {
+  private hostAttr: string;
+
+  constructor(
+    eventManager: EventManager,
+    sharedStylesHost: SharedStylesHost,
+    component: RendererType2,
+    appId: string,
+    removeStylesOnCompDestroy: boolean,
+    doc: Document,
+    ngZone: NgZone,
+    platformIsServer: boolean,
+    tracingService: TracingService<TracingSnapshot> | null,
+  ) {
+    const compId = appId + '-' + component.id;
+    super(
+      eventManager,
+      sharedStylesHost,
+      component,
+      removeStylesOnCompDestroy,
+      doc,
+      ngZone,
+      platformIsServer,
+      tracingService,
+      compId,
+    );
+    this.hostAttr = shimHostAttribute(compId);
+  }
+
+  applyToHost(element: any): void {
+    this.applyStyles();
+    this.setAttribute(element, this.hostAttr, '');
+  }
+
+  override createElement(
+    parent: any,
+    name: string,
+    isDirectiveHost?: boolean | null | undefined,
+  ): Element {
+    const el = super.createElement(parent, name);
+    if (isDirectiveHost === true) {
+      el.setAttribute('_ng-scope-limit', '');
+    }
     return el;
   }
 }

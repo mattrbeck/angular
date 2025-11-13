@@ -34,7 +34,7 @@ export type GlobalTargetResolver = (element: any) => EventTarget;
 export interface Renderer {
   destroy(): void;
   createComment(value: string): RComment;
-  createElement(name: string, namespace?: string | null): RElement;
+  createElement(name: string, namespace?: string | null, isDirectiveHost?: boolean): RElement;
   createText(value: string): RText;
   /**
    * This property is allowed to be null / undefined,

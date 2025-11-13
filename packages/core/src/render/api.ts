@@ -82,7 +82,7 @@ export abstract class Renderer2 {
    * @param namespace The namespace for the new element.
    * @returns The new element.
    */
-  abstract createElement(name: string, namespace?: string | null): any;
+  abstract createElement(name: string, namespace?: string | null, isDirectiveHost?: boolean): any;
   /**
    * Implement this callback to add a comment to the DOM of the host element.
    * @param value The comment text.
