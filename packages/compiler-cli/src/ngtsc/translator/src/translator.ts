@@ -336,18 +336,58 @@ export class ExpressionTranslatorVisitor<TFile, TStatement, TExpression>
   visitFunctionExpr(ast: o.FunctionExpr, context: Context): TExpression {
     return this.factory.createFunctionExpression(
       ast.name ?? null,
-      ast.params.map((param) => param.name),
+      ast.params.map((param) => ({
+        name: param.name,
+        type: this.getTypeAnnotation(param.type),
+      })),
       this.factory.createBlock(this.visitStatements(ast.statements, context)),
     );
   }
 
   visitArrowFunctionExpr(ast: o.ArrowFunctionExpr, context: any) {
     return this.factory.createArrowFunctionExpression(
-      ast.params.map((param) => param.name),
+      ast.params.map((param) => ({
+        name: param.name,
+        type: this.getTypeAnnotation(param.type),
+      })),
       Array.isArray(ast.body)
         ? this.factory.createBlock(this.visitStatements(ast.body, context))
         : ast.body.visitExpression(this, context),
     );
+  }
+
+  /**
+   * Converts an Angular compiler Type to a TypeScript type annotation string.
+   */
+  private getTypeAnnotation(type: o.Type | null): string | undefined {
+    if (type === null) {
+      return undefined;
+    }
+
+    if (type instanceof o.BuiltinType) {
+      switch (type.name) {
+        case o.BuiltinTypeName.Dynamic:
+          return 'any';
+        case o.BuiltinTypeName.Bool:
+          return 'boolean';
+        case o.BuiltinTypeName.String:
+          return 'string';
+        case o.BuiltinTypeName.Int:
+        case o.BuiltinTypeName.Number:
+          return 'number';
+        case o.BuiltinTypeName.Function:
+          return 'Function';
+        case o.BuiltinTypeName.Inferred:
+        case o.BuiltinTypeName.None:
+          return undefined;
+        default:
+          return undefined;
+      }
+    }
+
+    // For other types (ExpressionType, ArrayType, etc.), we don't emit type annotations
+    // to keep the implementation simple. These could be added later if needed.
+    return undefined;
   }
 
   visitBinaryOperatorExpr(ast: o.BinaryOperatorExpr, context: Context): TExpression {

@@ -10,6 +10,7 @@ import ts from 'typescript';
 import {
   AstFactory,
   BinaryOperator,
+  FunctionParam,
   LeadingComment,
   ObjectLiteralProperty,
   SourceMapRange,
@@ -179,7 +180,7 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
 
   createFunctionExpression(
     functionName: string | null,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: ts.Statement,
   ): ts.Expression {
     if (!ts.isBlock(body)) {
@@ -190,14 +191,14 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
       undefined,
       functionName ?? undefined,
       undefined,
-      parameters.map((param) => ts.factory.createParameterDeclaration(undefined, undefined, param)),
+      parameters.map((param) => this.createParameterDeclaration(param)),
       undefined,
       body,
     );
   }
 
   createArrowFunctionExpression(
-    parameters: string[],
+    parameters: FunctionParam[],
     body: ts.Statement | ts.Expression,
   ): ts.Expression {
     if (ts.isStatement(body) && !ts.isBlock(body)) {
@@ -207,10 +208,57 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
     return ts.factory.createArrowFunction(
       undefined,
       undefined,
-      parameters.map((param) => ts.factory.createParameterDeclaration(undefined, undefined, param)),
+      parameters.map((param) => this.createParameterDeclaration(param)),
       undefined,
       undefined,
       body,
+    );
+  }
+
+  /**
+   * Creates a parameter declaration with an optional type annotation.
+   */
+  private createParameterDeclaration(param: FunctionParam): ts.ParameterDeclaration {
+    let typeNode: ts.TypeNode | undefined = undefined;
+
+    if (param.type !== undefined) {
+      // Map simple type strings to TypeScript keywords
+      switch (param.type) {
+        case 'any':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword);
+          break;
+        case 'string':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword);
+          break;
+        case 'number':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword);
+          break;
+        case 'boolean':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.BooleanKeyword);
+          break;
+        case 'void':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.VoidKeyword);
+          break;
+        case 'unknown':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword);
+          break;
+        case 'never':
+          typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.NeverKeyword);
+          break;
+        default:
+          // For other types, create a type reference
+          typeNode = ts.factory.createTypeReferenceNode(param.type);
+          break;
+      }
+    }
+
+    return ts.factory.createParameterDeclaration(
+      undefined,
+      undefined,
+      param.name,
+      undefined,
+      typeNode,
+      undefined,
     );
   }
 

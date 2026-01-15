@@ -9,6 +9,7 @@
 export {
   AstFactory,
   BinaryOperator,
+  FunctionParam,
   LeadingComment,
   ObjectLiteralProperty,
   SourceMapLocation,

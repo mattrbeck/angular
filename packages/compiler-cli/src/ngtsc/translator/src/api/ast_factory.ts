@@ -7,6 +7,16 @@
  */
 
 /**
+ * Represents a function parameter with optional type annotation.
+ */
+export interface FunctionParam {
+  /** The parameter name */
+  name: string;
+  /** Optional type annotation (e.g., 'any', 'string', etc.) */
+  type?: string;
+}
+
+/**
  * Used to create transpiler specific AST nodes from Angular Output AST nodes in an abstract way.
  *
  * Note that the `AstFactory` makes no assumptions about the target language being generated.
@@ -113,12 +123,12 @@ export interface AstFactory<TStatement, TExpression> {
    * (e.g. `function foo(param1, param2) { stmt; }`).
    *
    * @param functionName the name of the function.
-   * @param parameters the names of the function's parameters.
+   * @param parameters the function's parameters with optional type annotations.
    * @param body a statement (or a block of statements) that are the body of the function.
    */
   createFunctionExpression(
     functionName: string | null,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: TStatement,
   ): TExpression;
 
@@ -126,10 +136,13 @@ export interface AstFactory<TStatement, TExpression> {
    * Create an expression that represents an arrow function
    * (e.g. `(param1, param2) => body`).
    *
-   * @param parameters the names of the function's parameters.
+   * @param parameters the function's parameters with optional type annotations.
    * @param body an expression or block of statements that are the body of the function.
    */
-  createArrowFunctionExpression(parameters: string[], body: TExpression | TStatement): TExpression;
+  createArrowFunctionExpression(
+    parameters: FunctionParam[],
+    body: TExpression | TStatement,
+  ): TExpression;
 
   /**
    * Creates an expression that represents a dynamic import

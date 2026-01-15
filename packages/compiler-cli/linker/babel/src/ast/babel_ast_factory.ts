@@ -11,6 +11,7 @@ import {assert} from '../../../../linker';
 import {
   AstFactory,
   BinaryOperator,
+  FunctionParam,
   LeadingComment,
   ObjectLiteralProperty,
   SourceMapRange,
@@ -112,28 +113,28 @@ export class BabelAstFactory implements AstFactory<t.Statement, t.Expression | t
   }
 
   createArrowFunctionExpression(
-    parameters: string[],
+    parameters: FunctionParam[],
     body: t.Statement | t.Expression,
   ): t.Expression {
     if (t.isStatement(body)) {
       assert(body, t.isBlockStatement, 'a block');
     }
     return t.arrowFunctionExpression(
-      parameters.map((param) => t.identifier(param)),
+      parameters.map((param) => t.identifier(param.name)),
       body,
     );
   }
 
   createFunctionExpression(
     functionName: string | null,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: t.Statement,
   ): t.Expression {
     assert(body, t.isBlockStatement, 'a block');
     const name = functionName !== null ? t.identifier(functionName) : null;
     return t.functionExpression(
       name,
-      parameters.map((param) => t.identifier(param)),
+      parameters.map((param) => t.identifier(param.name)),
       body,
     );
   }
