@@ -24,3 +24,9 @@ export {
 } from './src/trait';
 export {ivyTransformFactory} from './src/transform';
 export {signalMetadataTransform} from './src/implicit_signal_debug_name_transform';
+export {
+  SourceFileTransformer,
+  SourceFileTransformerConfig,
+  TransformedSourceFile,
+  SourceMapping,
+} from './src/source_transformer';

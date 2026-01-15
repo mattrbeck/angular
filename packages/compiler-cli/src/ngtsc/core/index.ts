@@ -8,4 +8,6 @@
 
 export * from './src/compiler';
 export {NgCompilerHost} from './src/host';
+export {TransformedCompilerHost} from './src/transformed_host';
+export {DiagnosticMapper, createDiagnosticMapper} from './src/diagnostic_mapper';
 export {UnifiedModulesHost, NgCompilerOptions, DiagnosticCategoryLabel} from './api';
