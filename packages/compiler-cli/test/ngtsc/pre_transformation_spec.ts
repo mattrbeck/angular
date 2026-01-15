@@ -6,6 +6,10 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import ts from 'typescript';
+import {NgtscProgram} from '../../src/ngtsc/program';
+import {NgCompiler} from '../../src/ngtsc/core';
+import {absoluteFrom} from '../../src/ngtsc/file_system';
 import {runInEachFileSystem} from '../../src/ngtsc/file_system/testing';
 import {loadStandardTestFiles} from '../../src/ngtsc/testing';
 import {NgtscTestEnvironment} from './env';
@@ -45,13 +49,111 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('ɵcmp');
       });
 
-      // TODO: Pre-transformation mode is still in development.
-      // The following tests are temporarily disabled (using xit) until the
-      // SourceFileTransformer correctly generates transformed source code.
-      // The current implementation has issues with how TraitCompiler.compile()
-      // is being called - it requires further investigation.
+      // Debug test to understand what's happening with generateTransformedSources
+      it('should generate transformed sources for a simple component', () => {
+        env.tsconfig({});
 
-      xit('should compile a simple component in pre-transformation mode', () => {
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>Hello World</div>',
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        // First, run the normal compilation to set up oldProgram
+        env.enableMultipleCompilations();
+        env.driveMain();
+
+        // Get the program and compiler directly
+        const ngtscProgram = (env as any).oldProgram as NgtscProgram;
+
+        // Check that the compiler exists
+        expect(ngtscProgram).toBeDefined();
+        expect(ngtscProgram.compiler).toBeDefined();
+
+        // Try to generate transformed sources
+        const transformedSources = ngtscProgram.compiler.generateTransformedSources();
+
+        // This should have at least one transformed file
+        expect(transformedSources.size).toBeGreaterThan(0);
+
+        // Verify the transformed content has the expected static fields
+        for (const [path, content] of transformedSources) {
+          if (path.endsWith('test.ts')) {
+            expect(content.transformedText).toContain('ɵcmp');
+          }
+        }
+      });
+
+      // Test the pre-transformation flow explicitly
+      it('should work when called early (simulating pre-transformation flow)', () => {
+        env.tsconfig({});
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>Hello World</div>',
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        // Create the program manually to simulate the pre-transformation flow
+        env.enableMultipleCompilations();
+
+        // Run driveMain but then immediately call generateTransformedSources
+        // to see if it works in that context
+        env.driveMain();
+
+        const ngtscProgram = (env as any).oldProgram as NgtscProgram;
+
+        // Get the list of source files the compiler sees
+        const sourceFiles = ngtscProgram.getTsProgram().getSourceFiles();
+        const userFiles = sourceFiles.filter(sf => !sf.isDeclarationFile && sf.fileName.includes('test.ts'));
+
+        // There should be exactly one user file
+        expect(userFiles.length).toBe(1);
+
+        // The transformed sources should work
+        const transformedSources = ngtscProgram.compiler.generateTransformedSources();
+        expect(transformedSources.size).toBeGreaterThan(0);
+      });
+
+      // Basic test to verify pre-transformation mode generates valid output
+      it('should analyze classes correctly when enabling pre-transformation', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>Hello World</div>',
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        env.driveMain();
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵcmp');
+      });
+
+      it('should compile a simple component in pre-transformation mode', () => {
         env.tsconfig({
           _usePreTransformation: true,
         });
@@ -76,7 +178,7 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('ɵcmp');
       });
 
-      xit('should compile a directive', () => {
+      it('should compile a directive', () => {
         env.tsconfig({
           _usePreTransformation: true,
         });
@@ -101,7 +203,7 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('ɵdir');
       });
 
-      xit('should compile a pipe', () => {
+      it('should compile a pipe', () => {
         env.tsconfig({
           _usePreTransformation: true,
         });
@@ -128,7 +230,7 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('ɵpipe');
       });
 
-      xit('should compile an injectable', () => {
+      it('should compile an injectable', () => {
         env.tsconfig({
           _usePreTransformation: true,
         });
@@ -155,7 +257,7 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('ɵprov');
       });
 
-      xit('should compile an NgModule', () => {
+      it('should compile an NgModule', () => {
         env.tsconfig({
           _usePreTransformation: true,
         });
@@ -168,6 +270,7 @@ runInEachFileSystem(() => {
           @Component({
             selector: 'test-cmp',
             template: '<div>Hello</div>',
+            standalone: false,
           })
           export class TestCmp {}
 
@@ -184,6 +287,99 @@ runInEachFileSystem(() => {
         const jsContents = env.getContents('test.js');
         expect(jsContents).toContain('ɵmod');
         expect(jsContents).toContain('ɵcmp');
+      });
+
+      it('should generate TCB shims for template type-checking', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>{{ message }}</div>',
+          })
+          export class TestCmp {
+            message: string = 'Hello';
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵcmp');
+        expect(jsContents).toContain('message');
+      });
+
+      it('should report template type errors in pre-transformation mode', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+          strictTemplates: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>{{ nonExistentProperty }}</div>',
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+
+        // Should have a diagnostic about the non-existent property
+        expect(diags.length).toBeGreaterThan(0);
+        expect(diags.some(d => d.messageText.toString().includes('nonExistentProperty'))).toBeTrue();
+      });
+
+      it('should handle generic components that require inline TCBs', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+          strictTemplates: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component, Input} from '@angular/core';
+
+          // Generic component that requires inline TCB due to type parameters
+          @Component({
+            selector: 'generic-cmp',
+            template: '<div>{{ value }}</div>',
+          })
+          export class GenericCmp<T extends {name: string}> {
+            @Input() value!: T;
+          }
+
+          @Component({
+            selector: 'app-root',
+            template: '<generic-cmp [value]="data"></generic-cmp>',
+            imports: [GenericCmp],
+          })
+          export class AppCmp {
+            data = {name: 'test'};
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵcmp');
+        // Both components should be compiled
+        expect(jsContents).toContain('GenericCmp');
+        expect(jsContents).toContain('AppCmp');
       });
     });
   });
