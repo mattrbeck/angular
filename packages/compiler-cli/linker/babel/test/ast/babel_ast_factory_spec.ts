@@ -159,7 +159,7 @@ describe('BabelAstFactory', () => {
   describe('createFunctionExpression()', () => {
     it('should create a function expression node with the given name, parameters and body statements', () => {
       const stmts = statement.ast`{x = 10; y = 20;}`;
-      const fn = factory.createFunctionExpression('foo', ['arg1', 'arg2'], stmts);
+      const fn = factory.createFunctionExpression('foo', [{name: 'arg1'}, {name: 'arg2'}], stmts);
       expect(t.isStatement(fn)).toBe(false);
       expect(generate(fn).code).toEqual(
         ['function foo(arg1, arg2) {', '  x = 10;', '  y = 20;', '}'].join('\n'),
@@ -168,7 +168,7 @@ describe('BabelAstFactory', () => {
 
     it('should create an anonymous function expression node if the name is null', () => {
       const stmts = statement.ast`{x = 10; y = 20;}`;
-      const fn = factory.createFunctionExpression(null, ['arg1', 'arg2'], stmts);
+      const fn = factory.createFunctionExpression(null, [{name: 'arg1'}, {name: 'arg2'}], stmts);
       expect(generate(fn).code).toEqual(
         ['function (arg1, arg2) {', '  x = 10;', '  y = 20;', '}'].join('\n'),
       );
@@ -178,7 +178,7 @@ describe('BabelAstFactory', () => {
   describe('createArrowFunctionExpression()', () => {
     it('should create an arrow function with an implicit return if a single statement is provided', () => {
       const expr = expression.ast`arg2 + arg1`;
-      const fn = factory.createArrowFunctionExpression(['arg1', 'arg2'], expr);
+      const fn = factory.createArrowFunctionExpression([{name: 'arg1'}, {name: 'arg2'}], expr);
       expect(generate(fn).code).toEqual('(arg1, arg2) => arg2 + arg1');
     });
 
@@ -190,7 +190,7 @@ describe('BabelAstFactory', () => {
 
     it('should create an arrow function with a body when an array of statements is provided', () => {
       const stmts = statement.ast`{x = 10; y = 20; return x + y;}`;
-      const fn = factory.createArrowFunctionExpression(['arg1', 'arg2'], stmts);
+      const fn = factory.createArrowFunctionExpression([{name: 'arg1'}, {name: 'arg2'}], stmts);
       expect(generate(fn).code).toEqual(
         ['(arg1, arg2) => {', '  x = 10;', '  y = 20;', '  return x + y;', '}'].join('\n'),
       );

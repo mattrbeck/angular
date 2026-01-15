@@ -189,7 +189,7 @@ describe('TypeScriptAstFactory', () => {
         items: [body],
         generate,
       } = setupStatements('{x = 10; y = 20;}');
-      const fn = factory.createFunctionExpression('foo', ['arg1', 'arg2'], body);
+      const fn = factory.createFunctionExpression('foo', [{name: 'arg1'}, {name: 'arg2'}], body);
       expect(ts.isExpressionStatement(fn)).toBe(false);
       expect(generate(fn)).toEqual('function foo(arg1, arg2) { x = 10; y = 20; }');
     });
@@ -199,7 +199,7 @@ describe('TypeScriptAstFactory', () => {
         items: [body],
         generate,
       } = setupStatements('{x = 10; y = 20;}');
-      const fn = factory.createFunctionExpression(null, ['arg1', 'arg2'], body);
+      const fn = factory.createFunctionExpression(null, [{name: 'arg1'}, {name: 'arg2'}], body);
       expect(generate(fn)).toEqual('function (arg1, arg2) { x = 10; y = 20; }');
     });
   });
@@ -242,7 +242,7 @@ describe('TypeScriptAstFactory', () => {
         items: [body],
         generate,
       } = setupExpressions('arg2 + arg1');
-      const fn = factory.createArrowFunctionExpression(['arg1', 'arg2'], body);
+      const fn = factory.createArrowFunctionExpression([{name: 'arg1'}, {name: 'arg2'}], body);
       expect(generate(fn)).toEqual('(arg1, arg2) => arg2 + arg1');
     });
 
@@ -260,7 +260,7 @@ describe('TypeScriptAstFactory', () => {
         items: [body],
         generate,
       } = setupStatements('{x = 10; y = 20; return x + y;}');
-      const fn = factory.createArrowFunctionExpression(['arg1', 'arg2'], body);
+      const fn = factory.createArrowFunctionExpression([{name: 'arg1'}, {name: 'arg2'}], body);
       expect(generate(fn)).toEqual('(arg1, arg2) => { x = 10; y = 20; return x + y; }');
     });
   });
