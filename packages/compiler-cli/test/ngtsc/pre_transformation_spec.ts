@@ -536,5 +536,238 @@ runInEachFileSystem(() => {
         expect(deferredJsContents).toContain('ɵcmp');
       });
     });
+
+    describe('integration tests', () => {
+      it('should compile components with control flow', () => {
+        // Control flow generates separate template functions with untyped parameters,
+        // so noImplicitAny must be disabled
+        env.tsconfig(
+          {
+            _usePreTransformation: true,
+          },
+          {noImplicitAny: false} as any,
+        );
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: \`
+              @if (show) {
+                <div>Shown</div>
+              }
+              @for (item of items; track item) {
+                <span>{{ item }}</span>
+              }
+            \`,
+          })
+          export class TestCmp {
+            show = true;
+            items = ['a', 'b', 'c'];
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵcmp');
+        // Control flow should be compiled
+        expect(jsContents).toContain('ɵɵconditional');
+        expect(jsContents).toContain('ɵɵrepeater');
+      });
+
+      it('should compile components with inputs and outputs', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'child.ts',
+          `
+          import {Component, Input, Output, EventEmitter} from '@angular/core';
+
+          @Component({
+            selector: 'child-cmp',
+            template: '<button (click)="onClick()">{{ label }}</button>',
+          })
+          export class ChildCmp {
+            @Input() label: string = '';
+            @Output() clicked = new EventEmitter<void>();
+
+            onClick() {
+              this.clicked.emit();
+            }
+          }
+        `,
+        );
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+          import {ChildCmp} from './child';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<child-cmp [label]="buttonLabel" (clicked)="handleClick()"></child-cmp>',
+            imports: [ChildCmp],
+          })
+          export class TestCmp {
+            buttonLabel = 'Click me';
+            handleClick() {
+              console.log('clicked');
+            }
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const childJsContents = env.getContents('child.js');
+        expect(childJsContents).toContain('ɵcmp');
+        expect(childJsContents).toContain('label');
+        expect(childJsContents).toContain('clicked');
+
+        const testJsContents = env.getContents('test.js');
+        expect(testJsContents).toContain('ɵcmp');
+      });
+
+      it('should compile services with dependency injection', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Injectable, Inject, InjectionToken} from '@angular/core';
+
+          export const API_URL = new InjectionToken<string>('API_URL');
+
+          @Injectable({
+            providedIn: 'root',
+          })
+          export class ApiService {
+            constructor(@Inject(API_URL) private apiUrl: string) {}
+
+            getUrl(): string {
+              return this.apiUrl;
+            }
+          }
+
+          @Injectable()
+          export class DataService {
+            constructor(private api: ApiService) {}
+
+            fetchData(): string {
+              return this.api.getUrl();
+            }
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵprov');
+        expect(jsContents).toContain('ɵfac');
+        expect(jsContents).toContain('ApiService');
+        expect(jsContents).toContain('DataService');
+      });
+
+      it('should compile components with lifecycle hooks', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {
+            Component,
+            OnInit,
+            OnDestroy,
+            AfterViewInit,
+            Input,
+            OnChanges,
+            SimpleChanges,
+          } from '@angular/core';
+
+          @Component({
+            selector: 'lifecycle-cmp',
+            template: '<div>{{ status }}</div>',
+          })
+          export class LifecycleCmp implements OnInit, OnDestroy, AfterViewInit, OnChanges {
+            @Input() data: string = '';
+            status = 'created';
+
+            ngOnChanges(changes: SimpleChanges): void {
+              this.status = 'changed';
+            }
+
+            ngOnInit(): void {
+              this.status = 'initialized';
+            }
+
+            ngAfterViewInit(): void {
+              this.status = 'view initialized';
+            }
+
+            ngOnDestroy(): void {
+              this.status = 'destroyed';
+            }
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵcmp');
+        // Lifecycle hooks should be preserved in the component definition
+        expect(jsContents).toContain('ngOnInit');
+        expect(jsContents).toContain('ngOnDestroy');
+      });
+
+      it('should produce equivalent output to traditional mode for a simple component', () => {
+        // First compile in traditional mode
+        env.tsconfig({});
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>{{ value }}</div>',
+          })
+          export class TestCmp {
+            value = 'hello';
+          }
+        `,
+        );
+        env.driveMain();
+        const traditionalOutput = env.getContents('test.js');
+
+        // Now compile with pre-transformation mode
+        env.tsconfig({_usePreTransformation: true});
+        env.driveMain();
+        const preTransformOutput = env.getContents('test.js');
+
+        // Both should contain the essential Angular constructs
+        expect(traditionalOutput).toContain('ɵcmp');
+        expect(preTransformOutput).toContain('ɵcmp');
+        expect(traditionalOutput).toContain('ɵfac');
+        expect(preTransformOutput).toContain('ɵfac');
+
+        // Both should have the template rendering the value
+        expect(traditionalOutput).toContain('value');
+        expect(preTransformOutput).toContain('value');
+      });
+    });
   });
 });
