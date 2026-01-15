@@ -434,6 +434,42 @@ runInEachFileSystem(() => {
         expect(dtsContents).toContain('i0.ɵɵInjectableDeclaration');
         expect(dtsContents).toContain('i0.ɵɵFactoryDeclaration');
       });
+
+      it('should add signal debug metadata', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component, signal, computed, input} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>{{ count() }}</div>',
+          })
+          export class TestCmp {
+            count = signal(0);
+            doubleCount = computed(() => this.count() * 2);
+            name = input<string>();
+          }
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+
+        // Signal debug names should be added via ngDevMode conditional
+        expect(jsContents).toContain('debugName');
+        expect(jsContents).toContain('ngDevMode');
+
+        // The debug names should match the property names
+        expect(jsContents).toContain('"count"');
+        expect(jsContents).toContain('"doubleCount"');
+        expect(jsContents).toContain('"name"');
+      });
     });
   });
 });
