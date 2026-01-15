@@ -470,6 +470,71 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('"doubleCount"');
         expect(jsContents).toContain('"name"');
       });
+
+      it('should handle @defer blocks and deferrable imports', () => {
+        // Pre-transformation mode requires:
+        // - Module settings that support dynamic imports (because import() calls are in the source)
+        // - noImplicitAny: false (because defer block template functions have untyped parameters)
+        env.tsconfig(
+          {
+            _usePreTransformation: true,
+          },
+          {
+            module: 'esnext',
+            target: 'es2022',
+            noImplicitAny: false,
+          } as any,
+        );
+
+        // Create a component that will be deferred
+        env.write(
+          'deferred.ts',
+          `
+          import {Component} from '@angular/core';
+
+          @Component({
+            selector: 'deferred-cmp',
+            template: '<div>Deferred Content</div>',
+          })
+          export class DeferredCmp {}
+        `,
+        );
+
+        env.write(
+          'test.ts',
+          `
+          import {Component} from '@angular/core';
+          import {DeferredCmp} from './deferred';
+
+          @Component({
+            selector: 'test-cmp',
+            template: \`
+              <div>Eager Content</div>
+              @defer {
+                <deferred-cmp />
+              }
+            \`,
+            imports: [DeferredCmp],
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        env.driveMain();
+
+        const jsContents = env.getContents('test.js');
+
+        // The component should compile
+        expect(jsContents).toContain('ɵcmp');
+
+        // Deferred component reference should be in a defer block callback
+        expect(jsContents).toContain('ɵɵdefer');
+
+        // The deferrable import should not be at the top level
+        // (it should be loaded lazily via dynamic import)
+        const deferredJsContents = env.getContents('deferred.js');
+        expect(deferredJsContents).toContain('ɵcmp');
+      });
     });
   });
 });

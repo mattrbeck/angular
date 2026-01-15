@@ -199,9 +199,14 @@ export class SourceFileTransformer {
 
       // In pre-transformation mode, generated Angular fields need type assertions
       // because the generated code may not match the expected type signatures.
-      // For example, factory functions have __ngFactoryType__ parameter but the
-      // type definition expects () => T. Adding 'as any' prevents type errors.
-      if (field.name === 'ɵprov' || field.name === 'ɵfac') {
+      // For example:
+      // - Factory functions have __ngFactoryType__ parameter but type expects () => T
+      // - Component definitions have template functions with untyped rf/ctx parameters
+      // Adding 'as any' prevents TypeScript type errors for these generated patterns.
+      const angularStaticFields = new Set([
+        'ɵcmp', 'ɵdir', 'ɵmod', 'ɵpipe', 'ɵprov', 'ɵfac', 'ɵinj',
+      ]);
+      if (angularStaticFields.has(field.name)) {
         exprNode = ts.factory.createAsExpression(exprNode, ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword));
       }
 
