@@ -381,6 +381,59 @@ runInEachFileSystem(() => {
         expect(jsContents).toContain('GenericCmp');
         expect(jsContents).toContain('AppCmp');
       });
+
+      it('should generate correct .d.ts files with proper type annotations', () => {
+        env.tsconfig({
+          _usePreTransformation: true,
+          declaration: true,
+        });
+
+        env.write(
+          'test.ts',
+          `
+          import {Component, Injectable, Directive, Input} from '@angular/core';
+
+          @Component({
+            selector: 'test-cmp',
+            template: '<div>Hello</div>',
+          })
+          export class TestCmp {}
+
+          @Directive({
+            selector: '[testDir]',
+          })
+          export class TestDir {
+            @Input() testDir: string = '';
+          }
+
+          @Injectable({
+            providedIn: 'root',
+          })
+          export class TestService {}
+        `,
+        );
+
+        env.driveMain();
+
+        // Verify .d.ts file is generated with proper Angular type annotations
+        const dtsContents = env.getContents('test.d.ts');
+
+        // Component should have ɵcmp and ɵfac declarations
+        expect(dtsContents).toContain('static ɵcmp:');
+        expect(dtsContents).toContain('static ɵfac:');
+
+        // Directive should have ɵdir and ɵfac declarations
+        expect(dtsContents).toContain('static ɵdir:');
+
+        // Injectable should have ɵprov and ɵfac declarations
+        expect(dtsContents).toContain('static ɵprov:');
+
+        // Type annotations should reference Angular core types
+        expect(dtsContents).toContain('i0.ɵɵComponentDeclaration');
+        expect(dtsContents).toContain('i0.ɵɵDirectiveDeclaration');
+        expect(dtsContents).toContain('i0.ɵɵInjectableDeclaration');
+        expect(dtsContents).toContain('i0.ɵɵFactoryDeclaration');
+      });
     });
   });
 });

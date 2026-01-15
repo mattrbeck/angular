@@ -206,6 +206,7 @@ export class SourceFileTransformer {
       }
 
       // Create a static property declaration
+      // Type annotations are added later by the declaration transform for .d.ts files
       const property = ts.factory.createPropertyDeclaration(
         [ts.factory.createToken(ts.SyntaxKind.StaticKeyword)],
         field.name,

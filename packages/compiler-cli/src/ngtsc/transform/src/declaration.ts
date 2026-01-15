@@ -24,13 +24,16 @@ import {DtsTransform} from './api';
  * have their declaration file transformed.
  */
 export class DtsTransformRegistry {
-  private ivyDeclarationTransforms = new Map<ts.SourceFile, IvyDeclarationDtsTransform>();
+  // Use file path as key instead of source file node reference to support
+  // pre-transformation mode where the ts.Program is recreated
+  private ivyDeclarationTransforms = new Map<string, IvyDeclarationDtsTransform>();
 
   getIvyDeclarationTransform(sf: ts.SourceFile): IvyDeclarationDtsTransform {
-    if (!this.ivyDeclarationTransforms.has(sf)) {
-      this.ivyDeclarationTransforms.set(sf, new IvyDeclarationDtsTransform());
+    const key = sf.fileName;
+    if (!this.ivyDeclarationTransforms.has(key)) {
+      this.ivyDeclarationTransforms.set(key, new IvyDeclarationDtsTransform());
     }
-    return this.ivyDeclarationTransforms.get(sf)!;
+    return this.ivyDeclarationTransforms.get(key)!;
   }
 
   /**
@@ -46,11 +49,12 @@ export class DtsTransformRegistry {
       return null;
     }
     const originalSf = ts.getOriginalNode(sf) as ts.SourceFile;
+    const key = originalSf.fileName;
 
     let transforms: DtsTransform[] | null = null;
-    if (this.ivyDeclarationTransforms.has(originalSf)) {
+    if (this.ivyDeclarationTransforms.has(key)) {
       transforms = [];
-      transforms.push(this.ivyDeclarationTransforms.get(originalSf)!);
+      transforms.push(this.ivyDeclarationTransforms.get(key)!);
     }
     return transforms;
   }
@@ -142,11 +146,29 @@ export interface IvyDeclarationField {
   type: Type;
 }
 
+/**
+ * Creates a unique key for a class declaration based on its file path and class name.
+ * This allows looking up declaration fields by identity rather than node reference,
+ * which is essential for pre-transformation mode where the ts.Program is recreated.
+ */
+function getClassKey(clazz: ClassDeclaration | ts.ClassDeclaration): string {
+  const fileName = clazz.getSourceFile().fileName;
+  const className = clazz.name?.text ?? '<anonymous>';
+  return `${fileName}#${className}`;
+}
+
 export class IvyDeclarationDtsTransform implements DtsTransform {
-  private declarationFields = new Map<ClassDeclaration, IvyDeclarationField[]>();
+  // Map keyed by "filePath#className" to support pre-transformation mode
+  // where node references don't match across different ts.Program instances
+  private declarationFields = new Map<string, IvyDeclarationField[]>();
+  // Keep original source files for type translation context
+  private originalSourceFiles = new Map<string, ts.SourceFile>();
 
   addFields(decl: ClassDeclaration, fields: IvyDeclarationField[]): void {
-    this.declarationFields.set(decl, fields);
+    const key = getClassKey(decl);
+    this.declarationFields.set(key, fields);
+    // Store the original source file for use in translateType
+    this.originalSourceFiles.set(key, decl.getSourceFile());
   }
 
   transformClass(
@@ -156,18 +178,22 @@ export class IvyDeclarationDtsTransform implements DtsTransform {
     refEmitter: ReferenceEmitter,
     imports: ImportManager,
   ): ts.ClassDeclaration {
-    const original = ts.getOriginalNode(clazz) as ClassDeclaration;
+    // Use ts.getOriginalNode to handle transformed nodes, then get the key
+    const originalClazz = ts.getOriginalNode(clazz) as ts.ClassDeclaration;
+    const key = getClassKey(originalClazz);
 
-    if (!this.declarationFields.has(original)) {
+    if (!this.declarationFields.has(key)) {
       return clazz;
     }
-    const fields = this.declarationFields.get(original)!;
+    const fields = this.declarationFields.get(key)!;
+    // Use the original source file stored during addFields for proper type translation
+    const contextSourceFile = this.originalSourceFiles.get(key) ?? originalClazz.getSourceFile();
 
     const newMembers = fields.map((decl) => {
       const modifiers = [ts.factory.createModifier(ts.SyntaxKind.StaticKeyword)];
       const typeRef = translateType(
         decl.type,
-        original.getSourceFile(),
+        contextSourceFile,
         reflector,
         refEmitter,
         imports,
