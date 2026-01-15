@@ -108,6 +108,8 @@ import {
   ivyTransformFactory,
   TraitCompiler,
   signalMetadataTransform,
+  SourceFileTransformer,
+  TransformedSourceFile,
 } from '../../transform';
 import {TemplateTypeCheckerImpl} from '../../typecheck';
 import {OptimizeFor, TemplateTypeChecker, TypeCheckingConfig} from '../../typecheck/api';
@@ -907,6 +909,52 @@ export class NgCompiler {
     }
 
     return {transformers: {before, afterDeclarations} as ts.CustomTransformers};
+  }
+
+  /**
+   * Generates transformed source files for pre-transformation compilation.
+   *
+   * This method transforms Angular decorated classes by generating the compiled
+   * static fields (ɵcmp, ɵdir, etc.) and removing the decorators, producing
+   * plain TypeScript source text that can be compiled by TypeScript without
+   * custom emit-time transformers.
+   *
+   * @returns A map of file paths to their transformed source content
+   */
+  generateTransformedSources(): Map<AbsoluteFsPath, TransformedSourceFile> {
+    const compilation = this.ensureAnalyzed();
+
+    // Set up the import rewriter
+    const coreImportsFrom = compilation.isCore ? getR3SymbolsFile(this.inputProgram) : null;
+    let importRewriter: ImportRewriter;
+    if (coreImportsFrom !== null) {
+      importRewriter = new R3SymbolsImportRewriter(coreImportsFrom.fileName);
+    } else {
+      importRewriter = new NoopImportRewriter();
+    }
+
+    // Create the source file transformer
+    const transformer = new SourceFileTransformer(compilation.reflector, {
+      importRewriter,
+      isCore: compilation.isCore,
+      isClosureCompilerEnabled: this.closureCompilerEnabled,
+    });
+
+    // Transform each non-declaration source file
+    const result = new Map<AbsoluteFsPath, TransformedSourceFile>();
+
+    for (const sf of this.inputProgram.getSourceFiles()) {
+      if (sf.isDeclarationFile) {
+        continue;
+      }
+
+      const transformed = transformer.transform(sf, compilation.traitCompiler);
+      if (transformed !== null) {
+        result.set(absoluteFromSourceFile(sf), transformed);
+      }
+    }
+
+    return result;
   }
 
   /**
