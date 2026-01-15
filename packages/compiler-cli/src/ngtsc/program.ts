@@ -19,6 +19,9 @@ import {
   incrementalFromCompilerTicket,
   NgCompiler,
   NgCompilerHost,
+  TransformedCompilerHost,
+  DiagnosticMapper,
+  createDiagnosticMapper,
 } from './core';
 import {NgCompilerOptions} from './core/api';
 import {DocEntry} from './docs';
@@ -29,6 +32,7 @@ import {ActivePerfRecorder, PerfCheckpoint as PerfCheckpoint, PerfEvent, PerfPha
 import {TsCreateProgramDriver} from './program_driver';
 import {DeclarationNode} from './reflection';
 import {retagAllTsFiles} from './shims';
+import {TransformedSourceFile} from './transform';
 import {OptimizeFor} from './typecheck/api';
 
 /**
@@ -46,6 +50,17 @@ export class NgtscProgram implements api.Program {
 
   private host: NgCompilerHost;
   private incrementalStrategy: TrackedIncrementalBuildStrategy;
+
+  /**
+   * Diagnostic mapper for pre-transformation mode.
+   * Maps diagnostics from transformed code back to original source positions.
+   */
+  private diagnosticMapper: DiagnosticMapper | null = null;
+
+  /**
+   * Whether pre-transformation mode is enabled.
+   */
+  private readonly usePreTransformation: boolean;
 
   constructor(
     rootNames: ReadonlyArray<string>,
@@ -68,6 +83,9 @@ export class NgtscProgram implements api.Program {
       options.noEmitOnError = false;
     }
 
+    // Pre-transformation mode is not compatible with incremental compilation yet.
+    this.usePreTransformation = options['_usePreTransformation'] === true && oldProgram === undefined;
+
     const reuseProgram = oldProgram?.compiler.getCurrentProgram();
     this.host = NgCompilerHost.wrap(delegateHost, rootNames, options, reuseProgram ?? null);
 
@@ -79,7 +97,8 @@ export class NgtscProgram implements api.Program {
       retagAllTsFiles(reuseProgram);
     }
 
-    this.tsProgram = perfRecorder.inPhase(PerfPhase.TypeScriptProgramCreate, () =>
+    // Create the initial TypeScript program for analysis
+    const analysisProgram = perfRecorder.inPhase(PerfPhase.TypeScriptProgramCreate, () =>
       ts.createProgram(this.host.inputFiles, options, this.host, reuseProgram),
     );
 
@@ -89,7 +108,7 @@ export class NgtscProgram implements api.Program {
     this.host.postProgramCreationCleanup();
 
     const programDriver = new TsCreateProgramDriver(
-      this.tsProgram,
+      analysisProgram,
       this.host,
       this.options,
       this.host.shimExtensionPrefixes,
@@ -112,7 +131,7 @@ export class NgtscProgram implements api.Program {
     let ticket: CompilationTicket;
     if (oldProgram === undefined) {
       ticket = freshCompilationTicket(
-        this.tsProgram,
+        analysisProgram,
         options,
         this.incrementalStrategy,
         programDriver,
@@ -123,7 +142,7 @@ export class NgtscProgram implements api.Program {
     } else {
       ticket = incrementalFromCompilerTicket(
         oldProgram.compiler,
-        this.tsProgram,
+        analysisProgram,
         this.incrementalStrategy,
         programDriver,
         modifiedResourceFiles,
@@ -133,6 +152,60 @@ export class NgtscProgram implements api.Program {
 
     // Create the NgCompiler which will drive the rest of the compilation.
     this.compiler = NgCompiler.fromTicket(ticket, this.host);
+
+    if (this.usePreTransformation) {
+      // Pre-transformation mode: transform sources before TypeScript compilation
+      this.tsProgram = this.createTransformedProgram(analysisProgram, delegateHost, perfRecorder);
+    } else {
+      // Traditional mode: use the analysis program directly
+      this.tsProgram = analysisProgram;
+    }
+  }
+
+  /**
+   * Creates a new TypeScript program with pre-transformed sources.
+   *
+   * In this mode, Angular decorators are transformed into plain TypeScript code
+   * before TypeScript compilation, rather than using emit-time transformers.
+   */
+  private createTransformedProgram(
+    analysisProgram: ts.Program,
+    delegateHost: api.CompilerHost,
+    perfRecorder: ActivePerfRecorder,
+  ): ts.Program {
+    // Generate transformed source files (this also ensures analysis is complete)
+    const transformedFiles = perfRecorder.inPhase(PerfPhase.Compile, () =>
+      this.compiler.generateTransformedSources(),
+    );
+
+    // If no files were transformed, just use the analysis program
+    if (transformedFiles.size === 0) {
+      return analysisProgram;
+    }
+
+    // TODO: Generate TCB shims here as well
+    // const tcbShims = this.compiler.generateAllTcbs();
+
+    // Create the diagnostic mapper for translating positions
+    const getCanonicalFileName = this.host.getCanonicalFileName?.bind(this.host);
+    const transformedFilesMap = new Map<string, TransformedSourceFile>();
+    for (const [path, transformed] of transformedFiles) {
+      const canonicalPath = getCanonicalFileName ? getCanonicalFileName(path) : path;
+      transformedFilesMap.set(canonicalPath, transformed);
+    }
+    this.diagnosticMapper = createDiagnosticMapper(transformedFilesMap, getCanonicalFileName);
+
+    // Create a new CompilerHost that serves transformed source files
+    const transformedHost = new TransformedCompilerHost(
+      this.host,
+      transformedFiles,
+      /* tcbShims */ undefined,
+    );
+
+    // Create the final TypeScript program with transformed sources
+    return perfRecorder.inPhase(PerfPhase.TypeScriptProgramCreate, () =>
+      ts.createProgram(this.host.inputFiles, this.options, transformedHost, analysisProgram),
+    );
   }
 
   getTsProgram(): ts.Program {
@@ -173,6 +246,12 @@ export class NgtscProgram implements api.Program {
         }
         res = diagnostics;
       }
+
+      // In pre-transformation mode, map diagnostics back to original positions
+      if (this.diagnosticMapper !== null) {
+        return this.diagnosticMapper.mapDiagnostics(res);
+      }
+
       return res;
     });
   }
@@ -205,6 +284,12 @@ export class NgtscProgram implements api.Program {
         }
         res = diagnostics;
       }
+
+      // In pre-transformation mode, map diagnostics back to original positions
+      if (this.diagnosticMapper !== null) {
+        return this.diagnosticMapper.mapDiagnostics(res);
+      }
+
       return res;
     });
   }
@@ -304,7 +389,11 @@ export class NgtscProgram implements api.Program {
     this.compiler.perfRecorder.memory(PerfCheckpoint.PreEmit);
 
     const res = this.compiler.perfRecorder.inPhase(PerfPhase.TypeScriptEmit, () => {
-      const {transformers} = this.compiler.prepareEmit();
+      const {transformers} = this.compiler.prepareEmit({
+        // In pre-transformation mode, skip the Ivy transform since transformation
+        // has already been applied to the source files.
+        skipIvyTransform: this.usePreTransformation,
+      });
       const ignoreFiles = this.compiler.ignoreForEmit;
       const emitCallback = (opts?.emitCallback ??
         defaultEmitCallback) as api.TsEmitCallback<CbEmitRes>;

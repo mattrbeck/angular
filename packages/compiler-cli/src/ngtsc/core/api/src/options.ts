@@ -126,6 +126,18 @@ export interface InternalOptions {
    * import e.g. `Component` relatively and should be detected by the compiler.
    */
   _isAngularCoreCompilation?: boolean;
+
+  /**
+   * Whether to use pre-transformation compilation mode.
+   *
+   * When enabled, Angular decorators are transformed into TypeScript code before
+   * TypeScript compilation, rather than using emit-time transformers. This mode
+   * is being developed to support TypeScript 7 which will remove support for
+   * emit-time transformers.
+   *
+   * @internal
+   */
+  _usePreTransformation?: boolean;
 }
 
 /**

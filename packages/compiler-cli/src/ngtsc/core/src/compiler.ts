@@ -807,11 +807,17 @@ export class NgCompiler {
   /**
    * Fetch transformers and other information which is necessary for a consumer to `emit` the
    * program with Angular-added definitions.
+   *
+   * @param opts Optional configuration for emit preparation
+   * @param opts.skipIvyTransform If true, skip the Ivy transform factory. This is used when
+   *        pre-transformation mode is enabled, since the transformation has already been
+   *        applied to the source files.
    */
-  prepareEmit(): {
+  prepareEmit(opts?: {skipIvyTransform?: boolean}): {
     transformers: ts.CustomTransformers;
   } {
     const compilation = this.ensureAnalyzed();
+    const skipIvyTransform = opts?.skipIvyTransform ?? false;
 
     // Untag all the files, otherwise TS 5.4 may end up emitting
     // references to typecheck files (see #56945 and #57135).
@@ -827,21 +833,30 @@ export class NgCompiler {
 
     const defaultImportTracker = new DefaultImportTracker();
 
-    const before: ts.TransformerFactory<ts.SourceFile>[] = [
-      ivyTransformFactory(
-        compilation.traitCompiler,
-        compilation.reflector,
-        importRewriter,
-        defaultImportTracker,
-        compilation.localCompilationExtraImportsTracker,
-        this.delegatingPerfRecorder,
-        compilation.isCore,
-        this.closureCompilerEnabled,
-        this.emitDeclarationOnly,
-      ),
+    const before: ts.TransformerFactory<ts.SourceFile>[] = [];
+
+    // In pre-transformation mode, the Ivy transform has already been applied
+    // during source file transformation, so we skip it here.
+    if (!skipIvyTransform) {
+      before.push(
+        ivyTransformFactory(
+          compilation.traitCompiler,
+          compilation.reflector,
+          importRewriter,
+          defaultImportTracker,
+          compilation.localCompilationExtraImportsTracker,
+          this.delegatingPerfRecorder,
+          compilation.isCore,
+          this.closureCompilerEnabled,
+          this.emitDeclarationOnly,
+        ),
+      );
+    }
+
+    before.push(
       aliasTransformFactory(compilation.traitCompiler.exportStatements),
       defaultImportTracker.importPreservingTransformer(),
-    ];
+    );
 
     // If there are JIT declarations, wire up the JIT transform and efficiently
     // run it against the target declarations.
