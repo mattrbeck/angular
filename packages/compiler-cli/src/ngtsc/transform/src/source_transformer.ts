@@ -54,6 +54,22 @@ export interface TransformedSourceFile {
 }
 
 /**
+ * Inline TCB content to be inserted into the source file during transformation.
+ */
+export interface InlineTcbInsert {
+  /**
+   * Position in the original source file where the TCB should be inserted.
+   * This is typically right after a class declaration (classNode.end + 1).
+   */
+  originalPosition: number;
+
+  /**
+   * The TCB text to insert.
+   */
+  text: string;
+}
+
+/**
  * Configuration for the SourceFileTransformer.
  */
 export interface SourceFileTransformerConfig {
@@ -84,11 +100,13 @@ export class SourceFileTransformer {
    *
    * @param sourceFile The source file to transform
    * @param compilation The TraitCompiler containing analyzed traits
+   * @param inlineTcbs Optional inline TCBs to insert into the transformed source
    * @returns The transformed source file, or null if no transformation was needed
    */
   transform(
     sourceFile: ts.SourceFile,
     compilation: TraitCompiler,
+    inlineTcbs?: InlineTcbInsert[],
   ): TransformedSourceFile | null {
     // Skip declaration files
     if (sourceFile.isDeclarationFile) {
@@ -132,8 +150,8 @@ export class SourceFileTransformer {
 
     visit(sourceFile);
 
-    // If no transformations needed, return null
-    if (classTransformations.size === 0) {
+    // If no transformations needed and no inline TCBs, return null
+    if (classTransformations.size === 0 && (!inlineTcbs || inlineTcbs.length === 0)) {
       return null;
     }
 
@@ -144,6 +162,7 @@ export class SourceFileTransformer {
       constantPool,
       importManager,
       allDeferrableImports,
+      inlineTcbs,
     );
 
     return {
@@ -174,9 +193,17 @@ export class SourceFileTransformer {
       }
 
       // Translate the initializer expression to TypeScript AST
-      const exprNode = translateExpression(sourceFile, field.initializer, importManager, {
+      let exprNode = translateExpression(sourceFile, field.initializer, importManager, {
         annotateForClosureCompiler: this.config.isClosureCompilerEnabled,
       });
+
+      // In pre-transformation mode, generated Angular fields need type assertions
+      // because the generated code may not match the expected type signatures.
+      // For example, factory functions have __ngFactoryType__ parameter but the
+      // type definition expects () => T. Adding 'as any' prevents type errors.
+      if (field.name === 'ɵprov' || field.name === 'ɵfac') {
+        exprNode = ts.factory.createAsExpression(exprNode, ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword));
+      }
 
       // Create a static property declaration
       const property = ts.factory.createPropertyDeclaration(
@@ -214,6 +241,9 @@ export class SourceFileTransformer {
 
   /**
    * Generates the transformed source text for the entire file.
+   *
+   * This method collects all text modifications first, then applies them
+   * in a single pass from end to start to avoid position shifting issues.
    */
   private generateTransformedText(
     sourceFile: ts.SourceFile,
@@ -221,66 +251,164 @@ export class SourceFileTransformer {
     constantPool: ConstantPool,
     importManager: ImportManager,
     deferrableImports: Set<ts.ImportDeclaration>,
+    inlineTcbs?: InlineTcbInsert[],
   ): {transformedText: string; sourceMappings: SourceMapping[]} {
     const sourceMappings: SourceMapping[] = [];
     let result = sourceFile.getFullText();
 
-    // Sort transformations by position (reverse order to avoid position shifts)
-    const sortedTransformations = Array.from(classTransformations.entries()).sort(
-      ([a], [b]) => b.getStart() - a.getStart(),
-    );
+    // Collect all modifications as {start, end, newText} operations
+    // We'll apply them in reverse order (by start position) to avoid position shifts
+    interface TextModification {
+      start: number;
+      end: number;
+      newText: string;
+    }
+    const modifications: TextModification[] = [];
 
-    // Apply class transformations in reverse order
-    for (const [classNode, transformation] of sortedTransformations) {
-      result = this.applyClassTransformation(
-        result,
-        sourceFile,
-        classNode,
-        transformation,
-        sourceMappings,
-      );
+    // Collect class member additions and decorator removals
+    for (const [classNode, transformation] of classTransformations) {
+      const {members, statements, decoratorsToRemove} = transformation;
+
+      // Add new static members before the closing brace
+      if (members.length > 0) {
+        const membersText = members
+          .map((m) => {
+            const markerStart = `/*@ng:${classNode.getStart()},${classNode.getEnd()}*/`;
+            const memberText = this.printer.printNode(ts.EmitHint.Unspecified, m.property, sourceFile);
+            if (this.config.isClosureCompilerEnabled) {
+              return `  /** @nocollapse */ ${markerStart}${memberText}`;
+            }
+            return `  ${markerStart}${memberText}`;
+          })
+          .join('\n');
+
+        const closingBracePos = classNode.getEnd() - 1;
+        modifications.push({
+          start: closingBracePos,
+          end: closingBracePos,
+          newText: '\n' + membersText + '\n',
+        });
+      }
+
+      // Add statements after the class
+      if (statements.length > 0) {
+        const statementsText = statements
+          .map((stmt) => this.printer.printNode(ts.EmitHint.Unspecified, stmt, sourceFile))
+          .join('\n');
+
+        modifications.push({
+          start: classNode.getEnd(),
+          end: classNode.getEnd(),
+          newText: '\n' + statementsText,
+        });
+      }
+
+      // Remove Angular decorators from the class
+      for (const decorator of decoratorsToRemove) {
+        const start = decorator.getFullStart();
+        const end = decorator.getEnd();
+        // Also remove trailing whitespace/newline after the decorator
+        const afterEnd = result.slice(end).match(/^[\s]*/)?.[0]?.length ?? 0;
+        modifications.push({
+          start,
+          end: end + afterEnd,
+          newText: '',
+        });
+      }
+
+      // Remove Angular decorators from class members
+      for (const member of classNode.members) {
+        const decorators = this.reflector.getDecoratorsOfDeclaration(member);
+        if (decorators === null) continue;
+        for (const decorator of decorators) {
+          if (this.isAngularCoreDecorator(decorator)) {
+            const node = decorator.node as ts.Decorator;
+            const start = node.getFullStart();
+            const end = node.getEnd();
+            const afterEnd = result.slice(end).match(/^[\s]*/)?.[0]?.length ?? 0;
+            modifications.push({
+              start,
+              end: end + afterEnd,
+              newText: '',
+            });
+          }
+        }
+      }
+
+      // Check constructor parameters for decorators
+      const ctor = classNode.members.find(ts.isConstructorDeclaration);
+      if (ctor) {
+        for (const param of ctor.parameters) {
+          const decorators = this.reflector.getDecoratorsOfDeclaration(param);
+          if (decorators === null) continue;
+          for (const decorator of decorators) {
+            if (this.isAngularCoreDecorator(decorator)) {
+              const node = decorator.node as ts.Decorator;
+              const start = node.getFullStart();
+              const end = node.getEnd();
+              const afterEnd = result.slice(end).match(/^[\s]*/)?.[0]?.length ?? 0;
+              modifications.push({
+                start,
+                end: end + afterEnd,
+                newText: '',
+              });
+            }
+          }
+        }
+      }
     }
 
-    // Remove deferrable imports
-    const sortedImports = Array.from(deferrableImports).sort(
-      (a, b) => b.getStart() - a.getStart(),
-    );
-    for (const importDecl of sortedImports) {
-      const start = importDecl.getFullStart();
-      const end = importDecl.getEnd();
-      result = result.slice(0, start) + result.slice(end);
+    // Collect deferrable import removals
+    for (const importDecl of deferrableImports) {
+      modifications.push({
+        start: importDecl.getFullStart(),
+        end: importDecl.getEnd(),
+        newText: '',
+      });
     }
 
-    // Generate constant pool statements
+    // Collect inline TCB insertions
+    // Inline TCBs are inserted at their original position (typically classNode.end + 1)
+    if (inlineTcbs && inlineTcbs.length > 0) {
+      for (const tcb of inlineTcbs) {
+        modifications.push({
+          start: tcb.originalPosition,
+          end: tcb.originalPosition,
+          newText: '\n' + tcb.text,
+        });
+      }
+    }
+
+    // Finalize imports and generate import declarations
+    const {newImports, updatedImports, deletedImports} = importManager.finalize();
+
+    // Collect deleted import removals
+    for (const importDecl of deletedImports) {
+      modifications.push({
+        start: importDecl.getFullStart(),
+        end: importDecl.getEnd(),
+        newText: '',
+      });
+    }
+
+    // Collect updated imports
+    for (const [oldBindings, newBindings] of updatedImports) {
+      const newText = this.printer.printNode(ts.EmitHint.Unspecified, newBindings, sourceFile);
+      modifications.push({
+        start: oldBindings.getStart(),
+        end: oldBindings.getEnd(),
+        newText,
+      });
+    }
+
+    // Generate constant pool statements and new imports
     const constantStatements = constantPool.statements.map((stmt) =>
       translateStatement(sourceFile, stmt, importManager, {
         annotateForClosureCompiler: this.config.isClosureCompilerEnabled,
       }),
     );
-
-    // Finalize imports and generate import declarations
-    const {newImports, updatedImports, deletedImports} = importManager.finalize();
-
-    // Handle deleted imports
-    const sortedDeletedImports = Array.from(deletedImports).sort(
-      (a, b) => b.getStart() - a.getStart(),
-    );
-    for (const importDecl of sortedDeletedImports) {
-      const start = importDecl.getFullStart();
-      const end = importDecl.getEnd();
-      result = result.slice(0, start) + result.slice(end);
-    }
-
-    // Handle updated imports
-    for (const [oldBindings, newBindings] of updatedImports) {
-      const start = oldBindings.getStart();
-      const end = oldBindings.getEnd();
-      const newText = this.printer.printNode(ts.EmitHint.Unspecified, newBindings, sourceFile);
-      result = result.slice(0, start) + newText + result.slice(end);
-    }
-
-    // Add new imports at the top of the file (after any leading comments/directives)
     const newImportDecls = newImports.get(sourceFile.fileName) ?? [];
+
     if (newImportDecls.length > 0 || constantStatements.length > 0) {
       const insertPosition = this.findImportInsertPosition(sourceFile);
       const newImportText = newImportDecls
@@ -290,144 +418,49 @@ export class SourceFileTransformer {
         .map((stmt) => this.printer.printNode(ts.EmitHint.Unspecified, stmt, sourceFile))
         .join('\n');
 
+      // Add leading newline since we insert right after the last import statement
       const insertText =
-        (newImportText ? newImportText + '\n' : '') + (constantText ? constantText + '\n' : '');
+        '\n' +
+        (newImportText ? newImportText + '\n' : '') +
+        (constantText ? constantText + '\n' : '');
 
-      result = result.slice(0, insertPosition) + insertText + result.slice(insertPosition);
+      modifications.push({
+        start: insertPosition,
+        end: insertPosition,
+        newText: insertText,
+      });
+    }
+
+    // Sort modifications by start position (descending) and apply from end to start
+    // This ensures position shifts don't affect other modifications
+    modifications.sort((a, b) => b.start - a.start);
+
+    // Merge overlapping or adjacent modifications
+    // (Some modifications might overlap, e.g., removing a decorator that's on the same line)
+    const mergedMods: TextModification[] = [];
+    for (const mod of modifications) {
+      if (mergedMods.length === 0) {
+        mergedMods.push({...mod}); // Clone to avoid mutation issues
+      } else {
+        const prev = mergedMods[mergedMods.length - 1];
+        // If this modification ends where the previous starts (or overlaps), merge them
+        if (mod.end >= prev.start) {
+          // Merge: the range becomes [mod.start, max(prev.end, mod.end)] with combined text
+          prev.end = Math.max(prev.end, mod.end);
+          prev.start = mod.start;
+          prev.newText = mod.newText + prev.newText;
+        } else {
+          mergedMods.push({...mod}); // Clone to avoid mutation issues
+        }
+      }
+    }
+
+    // Apply all modifications
+    for (const mod of mergedMods) {
+      result = result.slice(0, mod.start) + mod.newText + result.slice(mod.end);
     }
 
     return {transformedText: result, sourceMappings};
-  }
-
-  /**
-   * Applies a class transformation to the source text.
-   */
-  private applyClassTransformation(
-    text: string,
-    sourceFile: ts.SourceFile,
-    classNode: ts.ClassDeclaration,
-    transformation: ClassTransformation,
-    sourceMappings: SourceMapping[],
-  ): string {
-    const {members, statements, decoratorsToRemove} = transformation;
-
-    // Generate text for new members
-    const membersText = members
-      .map((m) => {
-        // Add source mapping marker
-        const markerStart = `/*@ng:${classNode.getStart()},${classNode.getEnd()}*/`;
-        const memberText = this.printer.printNode(ts.EmitHint.Unspecified, m.property, sourceFile);
-
-        // Add @nocollapse annotation for Closure Compiler
-        if (this.config.isClosureCompilerEnabled) {
-          return `  /** @nocollapse */ ${markerStart}${memberText}`;
-        }
-        return `  ${markerStart}${memberText}`;
-      })
-      .join('\n');
-
-    // Find the position to insert new members (just before the closing brace)
-    const classText = classNode.getFullText();
-    const closingBracePos = classNode.getEnd() - 1;
-
-    // Insert new members
-    if (membersText) {
-      text = text.slice(0, closingBracePos) + '\n' + membersText + '\n' + text.slice(closingBracePos);
-    }
-
-    // Add statements after the class
-    if (statements.length > 0) {
-      const statementsText = statements
-        .map((stmt) => this.printer.printNode(ts.EmitHint.Unspecified, stmt, sourceFile))
-        .join('\n');
-      const classEnd = classNode.getEnd();
-      text = text.slice(0, classEnd) + '\n' + statementsText + text.slice(classEnd);
-    }
-
-    // Remove Angular decorators from the class
-    text = this.removeDecorators(text, sourceFile, classNode, decoratorsToRemove);
-
-    // Remove Angular decorators from class members
-    text = this.removeAngularDecoratorFromMembers(text, sourceFile, classNode);
-
-    return text;
-  }
-
-  /**
-   * Removes specified decorators from the class declaration.
-   */
-  private removeDecorators(
-    text: string,
-    sourceFile: ts.SourceFile,
-    classNode: ts.ClassDeclaration,
-    decoratorsToRemove: ts.Decorator[],
-  ): string {
-    // Sort decorators by position (reverse order)
-    const sortedDecorators = [...decoratorsToRemove].sort(
-      (a, b) => b.getStart() - a.getStart(),
-    );
-
-    for (const decorator of sortedDecorators) {
-      const start = decorator.getFullStart();
-      const end = decorator.getEnd();
-      // Remove the decorator and any trailing whitespace/newline
-      const afterEnd = text.slice(end).match(/^[\s]*/)?.[0]?.length ?? 0;
-      text = text.slice(0, start) + text.slice(end + afterEnd);
-    }
-
-    return text;
-  }
-
-  /**
-   * Removes Angular decorators from class members (properties, methods, etc.).
-   */
-  private removeAngularDecoratorFromMembers(
-    text: string,
-    sourceFile: ts.SourceFile,
-    classNode: ts.ClassDeclaration,
-  ): string {
-    // Get all decorators to remove from members
-    const memberDecoratorsToRemove: ts.Decorator[] = [];
-
-    for (const member of classNode.members) {
-      const decorators = this.reflector.getDecoratorsOfDeclaration(member);
-      if (decorators === null) continue;
-
-      for (const decorator of decorators) {
-        if (this.isAngularCoreDecorator(decorator)) {
-          memberDecoratorsToRemove.push(decorator.node as ts.Decorator);
-        }
-      }
-    }
-
-    // Also check constructor parameters
-    const ctor = classNode.members.find(ts.isConstructorDeclaration);
-    if (ctor) {
-      for (const param of ctor.parameters) {
-        const decorators = this.reflector.getDecoratorsOfDeclaration(param);
-        if (decorators === null) continue;
-
-        for (const decorator of decorators) {
-          if (this.isAngularCoreDecorator(decorator)) {
-            memberDecoratorsToRemove.push(decorator.node as ts.Decorator);
-          }
-        }
-      }
-    }
-
-    // Sort and remove
-    const sortedDecorators = memberDecoratorsToRemove.sort(
-      (a, b) => b.getStart() - a.getStart(),
-    );
-
-    for (const decorator of sortedDecorators) {
-      const start = decorator.getFullStart();
-      const end = decorator.getEnd();
-      const afterEnd = text.slice(end).match(/^[\s]*/)?.[0]?.length ?? 0;
-      text = text.slice(0, start) + text.slice(end + afterEnd);
-    }
-
-    return text;
   }
 
   /**
@@ -441,26 +474,13 @@ export class SourceFileTransformer {
 
   /**
    * Finds the position where new imports should be inserted.
+   *
+   * Returns the position right after the last import statement (at the end of its text,
+   * before any trailing whitespace). The caller is responsible for adding appropriate
+   * newlines/whitespace.
    */
   private findImportInsertPosition(sourceFile: ts.SourceFile): number {
-    let insertPos = 0;
-
-    // Skip past any leading comments (like license headers)
-    const leadingComments = ts.getLeadingCommentRanges(sourceFile.getFullText(), 0);
-    if (leadingComments && leadingComments.length > 0) {
-      insertPos = leadingComments[leadingComments.length - 1].end;
-      // Skip any whitespace after comments
-      while (insertPos < sourceFile.getFullText().length) {
-        const char = sourceFile.getFullText()[insertPos];
-        if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-          insertPos++;
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Find the last import statement to insert after it
+    // Find the last import statement
     let lastImport: ts.ImportDeclaration | null = null;
     for (const statement of sourceFile.statements) {
       if (ts.isImportDeclaration(statement)) {
@@ -472,11 +492,20 @@ export class SourceFileTransformer {
     }
 
     if (lastImport !== null) {
-      insertPos = lastImport.getEnd();
-      // Skip any trailing newlines
+      // Insert right after the last import statement (no trailing whitespace skipping)
+      // This ensures we don't accidentally insert inside a decorator's full range
+      return lastImport.getEnd();
+    }
+
+    // No imports found, insert at the beginning (after any leading comments)
+    let insertPos = 0;
+    const leadingComments = ts.getLeadingCommentRanges(sourceFile.getFullText(), 0);
+    if (leadingComments && leadingComments.length > 0) {
+      insertPos = leadingComments[leadingComments.length - 1].end;
+      // Skip any whitespace after comments
       while (insertPos < sourceFile.getFullText().length) {
         const char = sourceFile.getFullText()[insertPos];
-        if (char === '\n' || char === '\r') {
+        if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
           insertPos++;
         } else {
           break;

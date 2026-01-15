@@ -83,6 +83,8 @@ import {
   SelectorlessComponentSymbol,
   SelectorlessDirectiveSymbol,
   Symbol,
+  TcbGenerationResult,
+  InlineTcbContent,
   TcbLocation,
   TemplateDiagnostic,
   TemplateSymbol,
@@ -321,6 +323,57 @@ export class TemplateTypeCheckerImpl implements TemplateTypeChecker {
 
   generateAllTypeCheckBlocks() {
     this.ensureAllShimsForAllFiles();
+  }
+
+  /**
+   * Generates all TCB shim files and returns their content as strings.
+   *
+   * Unlike `generateAllTypeCheckBlocks()` which updates the program driver,
+   * this method returns the shim content directly for use in pre-transformation mode.
+   *
+   * Returns both shim content (separate .ngtypecheck.ts files) and inline content
+   * (TCBs that need to be inserted into the original source files).
+   */
+  generateAllTcbShims(): TcbGenerationResult {
+    return this.perf.inPhase(PerfPhase.TcbGeneration, () => {
+      const shimContent = new Map<AbsoluteFsPath, string>();
+      const inlineContent = new Map<AbsoluteFsPath, InlineTcbContent[]>();
+
+      // Create a special host that captures shim data without updating the program
+      const captureHost = new CaptureTypeCheckingHost(this);
+      const ctx = this.newContext(captureHost);
+
+      // Generate TCBs for all source files
+      for (const sf of this.originalProgram.getSourceFiles()) {
+        if (sf.isDeclarationFile || isShim(sf)) {
+          continue;
+        }
+        this.typeCheckAdapter.typeCheck(sf, ctx);
+      }
+
+      // Get inline operations before finalize() merges them
+      const inlineOps = ctx.getInlineOperations();
+      for (const [path, ops] of inlineOps) {
+        inlineContent.set(
+          path,
+          ops.map((op) => ({
+            originalPosition: op.position,
+            text: op.text,
+          })),
+        );
+      }
+
+      // Finalize and extract shim content
+      const updates = ctx.finalize();
+      for (const [path, update] of updates) {
+        // Only include shim files (those without an original file)
+        if (update.originalFile === null) {
+          shimContent.set(path, update.newText);
+        }
+      }
+
+      return {shimContent, inlineContent};
+    });
   }
 
   /**
@@ -1593,6 +1646,38 @@ class SingleShimTypeCheckingHost extends SingleFileTypeCheckingHost {
 
     // Only need to generate a TCB for the class if no shim exists for it currently.
     return !this.fileData.shimData.has(shimPath);
+  }
+}
+
+/**
+ * A TypeCheckingHost that captures TCB shims without storing them in the checker state.
+ *
+ * This is used for generating TCB shims in pre-transformation mode, where we need
+ * to get the shim content without modifying the TemplateTypeChecker's internal state.
+ */
+class CaptureTypeCheckingHost implements TypeCheckingHost {
+  private sourceManagers = new Map<AbsoluteFsPath, DirectiveSourceManager>();
+
+  constructor(private impl: TemplateTypeCheckerImpl) {}
+
+  getSourceManager(sfPath: AbsoluteFsPath): DirectiveSourceManager {
+    if (!this.sourceManagers.has(sfPath)) {
+      this.sourceManagers.set(sfPath, new DirectiveSourceManager());
+    }
+    return this.sourceManagers.get(sfPath)!;
+  }
+
+  shouldCheckClass(_node: ts.ClassDeclaration): boolean {
+    // Always generate TCBs for all classes in capture mode
+    return true;
+  }
+
+  recordShimData(_sfPath: AbsoluteFsPath, _data: ShimTypeCheckingData): void {
+    // Don't record shim data - we're just capturing the generated content
+  }
+
+  recordComplete(_sfPath: AbsoluteFsPath): void {
+    // Don't mark as complete - we're just capturing the generated content
   }
 }
 

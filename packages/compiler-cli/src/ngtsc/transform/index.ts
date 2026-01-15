@@ -29,4 +29,5 @@ export {
   SourceFileTransformerConfig,
   TransformedSourceFile,
   SourceMapping,
+  InlineTcbInsert,
 } from './src/source_transformer';

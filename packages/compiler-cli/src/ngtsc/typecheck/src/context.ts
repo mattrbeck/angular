@@ -538,6 +538,57 @@ export class TypeCheckContextImpl implements TypeCheckContext {
     return updates;
   }
 
+  /**
+   * Gets the inline operations for each source file without merging them.
+   *
+   * This is used for pre-transformation mode where inline TCBs need to be
+   * inserted into the transformed source at specific positions.
+   *
+   * @returns Map from source file path to array of {position, text} operations
+   */
+  getInlineOperations(): Map<AbsoluteFsPath, Array<{position: number; text: string}>> {
+    const result = new Map<AbsoluteFsPath, Array<{position: number; text: string}>>();
+
+    for (const [sf, ops] of this.opMap) {
+      if (ops.length === 0) continue;
+
+      const printer = ts.createPrinter({omitTrailingSemicolon: true});
+      const importManager = new ImportManager({
+        forceGenerateNamespacesForNewImports: true,
+        shouldUseSingleQuotes: () => true,
+      });
+
+      const operations: Array<{position: number; text: string}> = [];
+
+      // Execute each operation to get its position and text
+      for (const op of ops) {
+        const text = op.execute(importManager, sf, this.refEmitter, printer);
+        operations.push({
+          position: op.splitPoint,
+          text,
+        });
+      }
+
+      // Handle imports needed by inline operations
+      const {newImports} = importManager.finalize();
+      if (newImports.has(sf.fileName)) {
+        newImports.get(sf.fileName)!.forEach((newImport) => {
+          const importText = printer.printNode(ts.EmitHint.Unspecified, newImport, sf);
+          operations.push({
+            position: 0,
+            text: importText,
+          });
+        });
+      }
+
+      if (operations.length > 0) {
+        result.set(absoluteFromSourceFile(sf), operations);
+      }
+    }
+
+    return result;
+  }
+
   private addInlineTypeCheckBlock(
     fileData: PendingFileTypeCheckingData,
     shimData: PendingShimData,

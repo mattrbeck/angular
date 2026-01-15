@@ -110,9 +110,10 @@ import {
   signalMetadataTransform,
   SourceFileTransformer,
   TransformedSourceFile,
+  InlineTcbInsert,
 } from '../../transform';
 import {TemplateTypeCheckerImpl} from '../../typecheck';
-import {OptimizeFor, TemplateTypeChecker, TypeCheckingConfig} from '../../typecheck/api';
+import {OptimizeFor, TcbGenerationResult, TemplateTypeChecker, TypeCheckingConfig} from '../../typecheck/api';
 import {
   ALL_DIAGNOSTIC_FACTORIES,
   ExtendedTemplateCheckerImpl,
@@ -934,9 +935,12 @@ export class NgCompiler {
    * plain TypeScript source text that can be compiled by TypeScript without
    * custom emit-time transformers.
    *
+   * @param inlineTcbs Optional inline TCB content to include in transformed sources
    * @returns A map of file paths to their transformed source content
    */
-  generateTransformedSources(): Map<AbsoluteFsPath, TransformedSourceFile> {
+  generateTransformedSources(
+    inlineTcbs?: Map<AbsoluteFsPath, InlineTcbInsert[]>,
+  ): Map<AbsoluteFsPath, TransformedSourceFile> {
     const compilation = this.ensureAnalyzed();
 
     // Set up the import rewriter
@@ -963,13 +967,31 @@ export class NgCompiler {
         continue;
       }
 
-      const transformed = transformer.transform(sf, compilation.traitCompiler);
+      // Get inline TCBs for this file if any
+      const sfPath = absoluteFromSourceFile(sf);
+      const fileInlineTcbs = inlineTcbs?.get(sfPath);
+
+      const transformed = transformer.transform(sf, compilation.traitCompiler, fileInlineTcbs);
       if (transformed !== null) {
-        result.set(absoluteFromSourceFile(sf), transformed);
+        result.set(sfPath, transformed);
       }
     }
 
     return result;
+  }
+
+  /**
+   * Generates all Type Check Block shim files and returns their content.
+   *
+   * This is used for pre-transformation mode where TCB shims need to be generated
+   * before the TypeScript program is created, so they can be included in the
+   * compilation for template type-checking.
+   *
+   * @returns TCB generation result with shim content and inline TCB content
+   */
+  generateAllTcbs(): TcbGenerationResult {
+    const compilation = this.ensureAnalyzed();
+    return compilation.templateTypeChecker.generateAllTcbShims();
   }
 
   /**

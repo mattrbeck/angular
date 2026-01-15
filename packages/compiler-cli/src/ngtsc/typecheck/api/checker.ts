@@ -358,6 +358,50 @@ export interface TemplateTypeChecker {
       sourceFile: ts.SourceFile;
     }[],
   ): NgTemplateDiagnostic<T>;
+
+  /**
+   * Generates all Type Check Block shim files and returns their content.
+   *
+   * This is used for pre-transformation mode where TCB shims need to be generated
+   * before the TypeScript program is created, so they can be included in the
+   * compilation for template type-checking.
+   *
+   * @returns TCB generation result with shim content and inline TCB content
+   */
+  generateAllTcbShims(): TcbGenerationResult;
+}
+
+/**
+ * Result of TCB generation for pre-transformation mode.
+ */
+export interface TcbGenerationResult {
+  /**
+   * Map from shim file path to its TypeScript source content.
+   * These are separate .ngtypecheck.ts files that contain TCBs.
+   */
+  shimContent: Map<AbsoluteFsPath, string>;
+
+  /**
+   * Map from source file path to inline TCB operations.
+   * These are TCBs that need to be inserted directly into the source file.
+   */
+  inlineContent: Map<AbsoluteFsPath, InlineTcbContent[]>;
+}
+
+/**
+ * Inline TCB content to be inserted into a source file.
+ */
+export interface InlineTcbContent {
+  /**
+   * The position in the original source file where the TCB should be inserted.
+   * This is typically right after the class declaration.
+   */
+  originalPosition: number;
+
+  /**
+   * The TCB text to insert.
+   */
+  text: string;
 }
 
 /**

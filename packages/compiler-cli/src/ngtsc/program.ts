@@ -32,8 +32,8 @@ import {ActivePerfRecorder, PerfCheckpoint as PerfCheckpoint, PerfEvent, PerfPha
 import {TsCreateProgramDriver} from './program_driver';
 import {DeclarationNode} from './reflection';
 import {retagAllTsFiles} from './shims';
-import {TransformedSourceFile} from './transform';
-import {OptimizeFor} from './typecheck/api';
+import {TransformedSourceFile, InlineTcbInsert} from './transform';
+import {OptimizeFor, TcbGenerationResult, InlineTcbContent} from './typecheck/api';
 
 /**
  * Entrypoint to the Angular Compiler (Ivy+) which sits behind the `api.Program` interface, allowing
@@ -173,33 +173,60 @@ export class NgtscProgram implements api.Program {
     delegateHost: api.CompilerHost,
     perfRecorder: ActivePerfRecorder,
   ): ts.Program {
-    // Generate transformed source files (this also ensures analysis is complete)
-    const transformedFiles = perfRecorder.inPhase(PerfPhase.Compile, () =>
-      this.compiler.generateTransformedSources(),
+    // Normalize the file paths for consistent lookup across different file systems
+    const getCanonicalFileName = this.host.getCanonicalFileName?.bind(this.host);
+
+    // Generate TCB shims and inline TCBs first
+    // We need this before generating transformed sources so we can include inline TCBs
+    const tcbResult = perfRecorder.inPhase(PerfPhase.TcbGeneration, () =>
+      this.compiler.generateAllTcbs(),
     );
 
-    // If no files were transformed, just use the analysis program
-    if (transformedFiles.size === 0) {
+    // Convert inline TCB content to the format expected by the transformer
+    const inlineTcbs = new Map<AbsoluteFsPath, InlineTcbInsert[]>();
+    for (const [path, contents] of tcbResult.inlineContent) {
+      const canonicalPath = (getCanonicalFileName ? getCanonicalFileName(path) : path) as AbsoluteFsPath;
+      inlineTcbs.set(
+        canonicalPath,
+        contents.map((c) => ({
+          originalPosition: c.originalPosition,
+          text: c.text,
+        })),
+      );
+    }
+
+    // Generate transformed source files, including inline TCBs
+    const transformedFiles = perfRecorder.inPhase(PerfPhase.Compile, () =>
+      this.compiler.generateTransformedSources(inlineTcbs),
+    );
+
+    // If no files were transformed and no inline TCBs, just use the analysis program
+    if (transformedFiles.size === 0 && tcbResult.shimContent.size === 0) {
       return analysisProgram;
     }
 
-    // TODO: Generate TCB shims here as well
-    // const tcbShims = this.compiler.generateAllTcbs();
+    // Normalize transformed file paths
+    const normalizedTransformedFiles = new Map<AbsoluteFsPath, TransformedSourceFile>();
+    for (const [path, transformed] of transformedFiles) {
+      const canonicalPath = (getCanonicalFileName ? getCanonicalFileName(path) : path) as AbsoluteFsPath;
+      normalizedTransformedFiles.set(canonicalPath, transformed);
+    }
+
+    // Normalize TCB shim paths as well
+    const normalizedTcbShims = new Map<AbsoluteFsPath, string>();
+    for (const [path, content] of tcbResult.shimContent) {
+      const canonicalPath = (getCanonicalFileName ? getCanonicalFileName(path) : path) as AbsoluteFsPath;
+      normalizedTcbShims.set(canonicalPath, content);
+    }
 
     // Create the diagnostic mapper for translating positions
-    const getCanonicalFileName = this.host.getCanonicalFileName?.bind(this.host);
-    const transformedFilesMap = new Map<string, TransformedSourceFile>();
-    for (const [path, transformed] of transformedFiles) {
-      const canonicalPath = getCanonicalFileName ? getCanonicalFileName(path) : path;
-      transformedFilesMap.set(canonicalPath, transformed);
-    }
-    this.diagnosticMapper = createDiagnosticMapper(transformedFilesMap, getCanonicalFileName);
+    this.diagnosticMapper = createDiagnosticMapper(normalizedTransformedFiles, getCanonicalFileName);
 
-    // Create a new CompilerHost that serves transformed source files
+    // Create a new CompilerHost that serves transformed source files and TCB shims
     const transformedHost = new TransformedCompilerHost(
       this.host,
-      transformedFiles,
-      /* tcbShims */ undefined,
+      normalizedTransformedFiles,
+      normalizedTcbShims,
     );
 
     // Create the final TypeScript program with transformed sources
