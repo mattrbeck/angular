@@ -161,7 +161,7 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
 
   createFunctionDeclaration(
     functionName: string,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: ts.Statement,
   ): ts.Statement {
     if (!ts.isBlock(body)) {
@@ -172,7 +172,17 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
       undefined,
       functionName,
       undefined,
-      parameters.map((param) => ts.factory.createParameterDeclaration(undefined, undefined, param)),
+      parameters.map((param) =>
+        ts.factory.createParameterDeclaration(
+          undefined,
+          undefined,
+          param.name,
+          undefined,
+          param.type !== undefined
+            ? ts.factory.createTypeReferenceNode(param.type, undefined)
+            : undefined,
+        ),
+      ),
       undefined,
       body,
     );

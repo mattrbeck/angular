@@ -101,13 +101,13 @@ export class BabelAstFactory implements AstFactory<t.Statement, t.Expression | t
 
   createFunctionDeclaration(
     functionName: string,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: t.Statement,
   ): t.Statement {
     assert(body, t.isBlockStatement, 'a block');
     return t.functionDeclaration(
       t.identifier(functionName),
-      parameters.map((param) => t.identifier(param)),
+      parameters.map((param) => t.identifier(param.name)),
       body,
     );
   }

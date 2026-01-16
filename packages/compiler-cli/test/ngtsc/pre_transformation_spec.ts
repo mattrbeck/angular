@@ -472,9 +472,8 @@ runInEachFileSystem(() => {
       });
 
       it('should handle @defer blocks and deferrable imports', () => {
-        // Pre-transformation mode requires:
-        // - Module settings that support dynamic imports (because import() calls are in the source)
-        // - noImplicitAny: false (because defer block template functions have untyped parameters)
+        // Pre-transformation mode requires module settings that support dynamic imports
+        // because import() calls are added to the source before TypeScript compilation
         env.tsconfig(
           {
             _usePreTransformation: true,
@@ -482,7 +481,6 @@ runInEachFileSystem(() => {
           {
             module: 'esnext',
             target: 'es2022',
-            noImplicitAny: false,
           } as any,
         );
 
@@ -539,14 +537,9 @@ runInEachFileSystem(() => {
 
     describe('integration tests', () => {
       it('should compile components with control flow', () => {
-        // Control flow generates separate template functions with untyped parameters,
-        // so noImplicitAny must be disabled
-        env.tsconfig(
-          {
-            _usePreTransformation: true,
-          },
-          {noImplicitAny: false} as any,
-        );
+        env.tsconfig({
+          _usePreTransformation: true,
+        });
 
         env.write(
           'test.ts',

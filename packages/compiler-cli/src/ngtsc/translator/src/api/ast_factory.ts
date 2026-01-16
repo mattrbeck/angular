@@ -109,12 +109,12 @@ export interface AstFactory<TStatement, TExpression> {
    * Create a statement that declares a function (e.g. `function foo(param1, param2) { stmt; }`).
    *
    * @param functionName the name of the function.
-   * @param parameters the names of the function's parameters.
+   * @param parameters the function's parameters with optional type annotations.
    * @param body a statement (or a block of statements) that are the body of the function.
    */
   createFunctionDeclaration(
     functionName: string,
-    parameters: string[],
+    parameters: FunctionParam[],
     body: TStatement,
   ): TStatement;
 

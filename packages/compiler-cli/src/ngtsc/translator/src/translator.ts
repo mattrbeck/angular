@@ -107,7 +107,10 @@ export class ExpressionTranslatorVisitor<TFile, TStatement, TExpression>
     return this.attachComments(
       this.factory.createFunctionDeclaration(
         stmt.name,
-        stmt.params.map((param) => param.name),
+        stmt.params.map((param) => ({
+          name: param.name,
+          type: this.getTypeAnnotation(param.type),
+        })),
         this.factory.createBlock(this.visitStatements(stmt.statements, context.withStatementMode)),
       ),
       stmt.leadingComments,
@@ -358,10 +361,11 @@ export class ExpressionTranslatorVisitor<TFile, TStatement, TExpression>
 
   /**
    * Converts an Angular compiler Type to a TypeScript type annotation string.
+   * Returns 'any' for null types to satisfy noImplicitAny in pre-transformation mode.
    */
   private getTypeAnnotation(type: o.Type | null): string | undefined {
     if (type === null) {
-      return undefined;
+      return 'any';
     }
 
     if (type instanceof o.BuiltinType) {

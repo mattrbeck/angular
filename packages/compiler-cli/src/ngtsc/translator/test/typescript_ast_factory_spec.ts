@@ -178,8 +178,21 @@ describe('TypeScriptAstFactory', () => {
         items: [body],
         generate,
       } = setupStatements('{x = 10; y = 20;}');
-      const fn = factory.createFunctionDeclaration('foo', ['arg1', 'arg2'], body);
+      const fn = factory.createFunctionDeclaration('foo', [{name: 'arg1'}, {name: 'arg2'}], body);
       expect(generate(fn)).toEqual('function foo(arg1, arg2) { x = 10; y = 20; }');
+    });
+
+    it('should create a function declaration with typed parameters', () => {
+      const {
+        items: [body],
+        generate,
+      } = setupStatements('{x = 10; y = 20;}');
+      const fn = factory.createFunctionDeclaration(
+        'foo',
+        [{name: 'arg1', type: 'any'}, {name: 'arg2', type: 'string'}],
+        body,
+      );
+      expect(generate(fn)).toEqual('function foo(arg1: any, arg2: string) { x = 10; y = 20; }');
     });
   });
 

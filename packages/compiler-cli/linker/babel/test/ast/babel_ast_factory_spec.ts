@@ -149,7 +149,7 @@ describe('BabelAstFactory', () => {
   describe('createFunctionDeclaration()', () => {
     it('should create a function declaration node with the given name, parameters and body statements', () => {
       const stmts = statement.ast`{x = 10; y = 20;}`;
-      const fn = factory.createFunctionDeclaration('foo', ['arg1', 'arg2'], stmts);
+      const fn = factory.createFunctionDeclaration('foo', [{name: 'arg1'}, {name: 'arg2'}], stmts);
       expect(generate(fn).code).toEqual(
         ['function foo(arg1, arg2) {', '  x = 10;', '  y = 20;', '}'].join('\n'),
       );
