@@ -1,0 +1,27 @@
+{
+  "name": "ngdump-demo",
+  "description": "Demo app for testing the ngdump CLI tool",
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@angular/common": "link:./in-existing-linked-by-bazel",
+    "@angular/compiler": "link:./in-existing-linked-by-bazel",
+    "@angular/core": "link:./in-existing-linked-by-bazel",
+    "@angular/platform-browser": "link:./in-existing-linked-by-bazel",
+    "rxjs": "^7.0.0",
+    "tslib": "^2.3.0",
+    "zone.js": "0.16.0"
+  },
+  "devDependencies": {
+    "@angular/compiler-cli": "link:./in-existing-linked-by-bazel",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "ngdump": "ngdump -p tsconfig.json",
+    "ngdump:json": "ngdump -p tsconfig.json --format json",
+    "test": "ngdump -p tsconfig.json"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
