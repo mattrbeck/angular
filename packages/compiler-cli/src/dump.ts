@@ -9,6 +9,7 @@
 import ts from 'typescript';
 import yargs from 'yargs';
 
+import {NgtscProgram} from './ngtsc/program';
 import {exitCodeFromResult, formatDiagnostics, readConfiguration} from './perform_compile';
 import * as api from './transformers/api';
 import * as ng from './transformers/entry_points';
@@ -36,11 +37,19 @@ export async function mainDump(
       default: 'text',
       description: 'Output format (text or json)',
     })
+    .option('files', {
+      type: 'string',
+      choices: ['emit', 'typecheck', 'source', 'all'] as const,
+      default: 'emit',
+      description:
+        'Which files to dump: emit (compiled JS), typecheck (.ngtypecheck.ts shims), source (input .ts), or all',
+    })
     .help()
     .parseSync();
 
   const project = parsedArgs.project;
   const format = parsedArgs.format as 'text' | 'json';
+  const filesOption = parsedArgs.files as 'emit' | 'typecheck' | 'source' | 'all';
 
   // Read the configuration
   const config = readConfiguration(project);
@@ -52,9 +61,9 @@ export async function mainDump(
 
   // Create compiler host and program
   const host = ng.createCompilerHost({options});
-  const program = ng.createProgram({rootNames, host, options});
+  const program = ng.createProgram({rootNames, host, options}) as NgtscProgram;
 
-  // Gather diagnostics
+  // Gather diagnostics (this also triggers type-check shim generation)
   const allDiagnostics: ts.Diagnostic[] = [];
 
   // Option diagnostics
@@ -67,6 +76,8 @@ export async function mainDump(
   // Semantic diagnostics
   allDiagnostics.push(...program.getTsSemanticDiagnostics());
   allDiagnostics.push(...program.getNgStructuralDiagnostics());
+
+  // Angular semantic diagnostics - this triggers type-check shim generation
   allDiagnostics.push(...program.getNgSemanticDiagnostics());
 
   // Check for errors
@@ -75,46 +86,78 @@ export async function mainDump(
     return reportErrorsAndExit(allDiagnostics, options, consoleError);
   }
 
-  // Capture emitted files instead of writing to disk
   const capturedFiles: CapturedFile[] = [];
-  const writeFile: ts.WriteFileCallback = (
-    fileName: string,
-    content: string,
-    _writeByteOrderMark: boolean,
-    _onError?: (message: string) => void,
-    _sourceFiles?: readonly ts.SourceFile[],
-  ) => {
-    capturedFiles.push({fileName, content});
-  };
 
-  // Emit with custom writeFile callback
-  const emitResult = program.emit({
-    emitCallback: ({
-      program: tsProgram,
-      targetSourceFile,
-      writeFile: defaultWriteFile,
-      cancellationToken,
-      emitOnlyDtsFiles,
-      customTransformers,
-    }) => {
-      return tsProgram.emit(
+  // Collect source files if requested
+  if (filesOption === 'source' || filesOption === 'all') {
+    const tsProgram = program.getTsProgram();
+    for (const sf of tsProgram.getSourceFiles()) {
+      // Skip declaration files and node_modules
+      if (sf.isDeclarationFile || sf.fileName.includes('node_modules')) {
+        continue;
+      }
+      capturedFiles.push({
+        fileName: sf.fileName,
+        content: sf.getFullText(),
+      });
+    }
+  }
+
+  // Collect type-check shim files if requested
+  if (filesOption === 'typecheck' || filesOption === 'all') {
+    // Get the current program which includes type-check shims after diagnostics
+    const currentProgram = program.compiler.getCurrentProgram();
+    for (const sf of currentProgram.getSourceFiles()) {
+      if (sf.fileName.includes('.ngtypecheck.')) {
+        capturedFiles.push({
+          fileName: sf.fileName,
+          content: sf.getFullText(),
+        });
+      }
+    }
+  }
+
+  // Collect emitted files if requested
+  if (filesOption === 'emit' || filesOption === 'all') {
+    const writeFile: ts.WriteFileCallback = (
+      fileName: string,
+      content: string,
+      _writeByteOrderMark: boolean,
+      _onError?: (message: string) => void,
+      _sourceFiles?: readonly ts.SourceFile[],
+    ) => {
+      capturedFiles.push({fileName, content});
+    };
+
+    // Emit with custom writeFile callback
+    const emitResult = program.emit({
+      emitCallback: ({
+        program: tsProgram,
         targetSourceFile,
-        writeFile,
+        writeFile: defaultWriteFile,
         cancellationToken,
         emitOnlyDtsFiles,
         customTransformers,
-      );
-    },
-  });
+      }) => {
+        return tsProgram.emit(
+          targetSourceFile,
+          writeFile,
+          cancellationToken,
+          emitOnlyDtsFiles,
+          customTransformers,
+        );
+      },
+    });
 
-  // Check for emit errors
-  if (emitResult.diagnostics.length) {
-    allDiagnostics.push(...emitResult.diagnostics);
-    const emitErrors = emitResult.diagnostics.filter(
-      (d) => d.category === ts.DiagnosticCategory.Error,
-    );
-    if (emitErrors.length) {
-      return reportErrorsAndExit(allDiagnostics, options, consoleError);
+    // Check for emit errors
+    if (emitResult.diagnostics.length) {
+      allDiagnostics.push(...emitResult.diagnostics);
+      const emitErrors = emitResult.diagnostics.filter(
+        (d) => d.category === ts.DiagnosticCategory.Error,
+      );
+      if (emitErrors.length) {
+        return reportErrorsAndExit(allDiagnostics, options, consoleError);
+      }
     }
   }
 

@@ -21,7 +21,10 @@
   "scripts": {
     "ngdump": "ngdump -p tsconfig.json",
     "ngdump:json": "ngdump -p tsconfig.json --format json",
-    "test": "ngdump -p tsconfig.json"
+    "ngdump:typecheck": "ngdump -p tsconfig.json --files typecheck",
+    "ngdump:source": "ngdump -p tsconfig.json --files source",
+    "ngdump:all": "ngdump -p tsconfig.json --files all",
+    "test": "ngdump -p tsconfig.json --files typecheck"
   },
   "packageManager": "pnpm@10.28.0"
 }
