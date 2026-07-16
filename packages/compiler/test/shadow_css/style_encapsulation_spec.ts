@@ -134,5 +134,11 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss('cmp :host >>> child {}');
       expectMatchesShadowCss(':host >>> .x > .y {}');
     });
+
+    it('should match ShadowCss output for :host-context without a valid argument', () => {
+      expectMatchesShadowCss(':host-context .inner {}');
+      expectMatchesShadowCss(':host-context() .inner {}');
+      expectMatchesShadowCss(':host-context(.foo) .bar {}');
+    });
   });
 });

@@ -268,7 +268,7 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
           return;
         }
         rule.selector = parser((selectorList: Root) => {
-          rewriteHostContext(selectorList);
+          rewriteHostContext(selectorList, isAngular);
           selectorList.each((selector) => {
             shimSelector(
               selector,
@@ -336,7 +336,7 @@ const atRulesToSkip = new Set(['keyframes', '-webkit-keyframes']);
  * Rewrites :host-context selectors into their equivalent :host selectors and
  * rewrites :-acx-global-context as :UNSCOPED.
  */
-function rewriteHostContext(selectorList: Root): void {
+function rewriteHostContext(selectorList: Root, isAngular: boolean): void {
   selectorList.each((selector: Selector) => {
     const hostContextNodes: Pseudo[] = [];
     let currentCompoundIndex = 0;
@@ -354,6 +354,12 @@ function rewriteHostContext(selectorList: Root): void {
         // steps don't need to account for both.
         node.value = ':UNSCOPED';
       } else if (node.value === ':host-context') {
+        if (isAngular && (node.length === 0 || node.first.length === 0)) {
+          // Angular only converts :host-context with a non-empty argument.
+          // Bare `:host-context` and `:host-context()` are left as-is and
+          // scoped like any other pseudo-class.
+          return;
+        }
         hostContextNodes.push(node);
         hostContextIndex ??= currentCompoundIndex;
         node.replaceWith(hostPseudo());
