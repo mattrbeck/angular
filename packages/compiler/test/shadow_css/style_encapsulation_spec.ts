@@ -238,6 +238,15 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss(':host-context(outer1) :host(bar) {}');
     });
 
+    it('should match ShadowCss output for :host-context nested in :is/:where', () => {
+      expectMatchesShadowCss(':where(:host-context(backdrop)) {}');
+      expectMatchesShadowCss(':where(:host-context(outer1)) :host(bar) {}');
+      expectMatchesShadowCss(':where(:host-context(.one)) :where(:host-context(.two)) {}');
+      expectMatchesShadowCss(':where(:host-context(backdrop)) .foo ~ .bar {}');
+      expectMatchesShadowCss(':where(:host-context(backdrop)) :host {}');
+      expectMatchesShadowCss('div:where(:host-context(backdrop)) :host {}');
+    });
+
     describe('known divergences from ShadowCss', () => {
       // ShadowCss's regex-based :host-context handling emits accidental
       // artifacts in some degenerate cases (doubled host markers that only

@@ -421,6 +421,17 @@ function rewriteHostContext(selectorList: Root, isAngular: boolean): void {
       }
     });
 
+    if (isAngular) {
+      // Angular also converts :host-context nested one level inside a
+      // top-level :is/:where pseudo, merging every :host-context in the
+      // selector into that pseudo.
+      const nested = collectNestedHostContext(selector);
+      if (nested.hostContextNodes.length > 0) {
+        rewriteNestedHostContextAngular(selector, nested, hostContextNodes);
+        return;
+      }
+    }
+
     if (hostContextIndex === undefined) return;
 
     if (isAngular) {
@@ -529,6 +540,120 @@ function getNodePermutations(hostContextNodes: Pseudo[]): CombinatorOrPseudo[][]
     permutationsWithCombinators.push(permutationWithCombinators);
   }
   return permutationsWithCombinators;
+}
+
+/** :host-context pseudos nested one level inside top-level :is/:where pseudos. */
+interface NestedHostContext {
+  /** The top-level :is/:where pseudos that contain a :host-context. */
+  containerPseudos: Pseudo[];
+  /** The nested :host-context pseudos, in selector order. */
+  hostContextNodes: Pseudo[];
+}
+
+/**
+ * Collects :host-context pseudos nested one level inside the selector's
+ * top-level :is/:where pseudos.
+ */
+function collectNestedHostContext(selector: Selector): NestedHostContext {
+  const containerPseudos: Pseudo[] = [];
+  const hostContextNodes: Pseudo[] = [];
+  for (const node of selector.nodes) {
+    if (!isPseudo(node) || !scopedPseudoFunctions.has(node.value)) continue;
+    let found = false;
+    for (const arg of node.nodes) {
+      for (const child of arg.nodes) {
+        if (
+          isPseudo(child) &&
+          child.value === ':host-context' &&
+          child.length > 0 &&
+          child.first.length > 0
+        ) {
+          hostContextNodes.push(child);
+          found = true;
+        }
+      }
+    }
+    if (found) {
+      containerPseudos.push(node);
+    }
+  }
+  return {containerPseudos, hostContextNodes};
+}
+
+/**
+ * Rewrites :host-context pseudos nested inside top-level :is/:where pseudos
+ * the way Angular's ShadowCss does: every :host-context in the selector is
+ * combined into the first such pseudo. When no :host follows, each
+ * combination is emitted with the host marker on, and as a descendant of, the
+ * most local context compound — all inside the pseudo, preserving its
+ * specificity behavior (e.g. `:where(...)` stays zero-specificity):
+ *
+ * `:where(:host-context(.x)) {}` becomes `:where(.x[host]), :where(.x [host]) {}`
+ *
+ * When a :host follows, the context combines in place without a host marker:
+ *
+ * `:where(:host-context(.x)) :host {}` becomes `:where(.x) [host] {}`
+ */
+function rewriteNestedHostContextAngular(
+  selector: Selector,
+  nested: NestedHostContext,
+  topLevelHostContextNodes: Pseudo[],
+): void {
+  const {containerPseudos} = nested;
+  const allContexts = [...topLevelHostContextNodes, ...nested.hostContextNodes];
+  const primary = containerPseudos[0];
+  const primaryIndex = selector.index(primary);
+  const hasHostAfterContext = selector.nodes
+    .slice(primaryIndex + 1)
+    .filter((node) => !(containerPseudos as Node[]).includes(node))
+    .some(nodeContainsHostDeep);
+
+  const permutations = getNodePermutationsAngular(allContexts);
+
+  // Remove the consumed :host-context nodes, and any container pseudo other
+  // than the primary that becomes empty (with an adjacent combinator).
+  for (const hostContextNode of allContexts) {
+    hostContextNode.remove();
+  }
+  for (const containerPseudo of containerPseudos.slice(1)) {
+    if (!containerPseudo.nodes.every((arg) => arg.length === 0)) continue;
+    const prev = containerPseudo.prev();
+    const next = containerPseudo.next();
+    if ((prev === undefined || isCombinator(prev)) && (next === undefined || isCombinator(next))) {
+      const combinatorToRemove = isCombinator(next) ? next : isCombinator(prev) ? prev : undefined;
+      combinatorToRemove?.remove();
+    }
+    containerPseudo.remove();
+  }
+
+  const newPrimaryIndex = selector.index(primary);
+  const replacementSelectors: Selector[] = [];
+  for (const permutation of permutations) {
+    const variants: CombinatorOrPseudo[][] = hasHostAfterContext
+      ? [permutation]
+      : [
+          // Host marker on the most local context compound.
+          [...permutation, hostPseudo()],
+          // Host marker as a descendant of the context.
+          [...permutation, descendantCombinator(), hostPseudo()],
+        ];
+    for (const variantNodes of variants) {
+      const replacement = selector.clone();
+      const primaryClone = replacement.at(newPrimaryIndex) as Pseudo;
+      // Unwrap the :UNSCOPED markers: inside the pseudo they're unnecessary
+      // (the shimming pass leaves context compounds inside :is/:where
+      // unscoped via its host handling) and would otherwise leak when the
+      // pseudo sits in a compound with other selectors.
+      const flattenedNodes = variantNodes.flatMap((node) =>
+        isPseudo(node) && node.value === ':UNSCOPED' ? [...node.first.nodes] : [node],
+      );
+      const content = selectorFromNodes(flattenedNodes);
+      content.parent = primaryClone as unknown as typeof content.parent;
+      primaryClone.nodes = [content];
+      replacementSelectors.push(replacement);
+    }
+  }
+  selector.replaceWith(...replacementSelectors);
 }
 
 /**
@@ -804,13 +929,16 @@ function shimSelectorAngular(
     }
 
     // Unwrap :UNSCOPED markers (from :host-context rewriting): their contents
-    // represent the host's ancestor context and are not scoped.
-    if (nodes.some((node) => isPseudo(node) && node.value === ':UNSCOPED')) {
-      for (const node of nodes) {
-        if (isPseudo(node) && node.value === ':UNSCOPED') {
-          node.replaceWith(node.first);
-        }
+    // represent the host's ancestor context and are not scoped. The rest of
+    // the compound (e.g. a :host sharing it) is still processed.
+    let compoundUnscoped = false;
+    for (const node of nodes) {
+      if (isPseudo(node) && node.value === ':UNSCOPED') {
+        node.replaceWith(node.first);
+        compoundUnscoped = true;
       }
+    }
+    if (compoundUnscoped && !nodes.some(isConvertibleHost)) {
       continue;
     }
 
