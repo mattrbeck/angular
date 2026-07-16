@@ -520,6 +520,13 @@ function shimSelector(
   let needsContentClass = !containsHostPseudo;
   selector.each((node: Node, index: number) => {
     if (isCombinator(node)) {
+      if (isAngular && (node.value === '>>>' || node.value === '/deep/')) {
+        // The deprecated shadow-piercing combinators act like ::ng-deep:
+        // selectors after them are not scoped. They're replaced with a
+        // descendant combinator.
+        seenDeep = true;
+        node.value = ' ';
+      }
       seenDeep ||= legacy && seenHost; // Don't scope after :host in legacy mode
       needsContentClass = !seenDeep && containsHostPseudo === seenHost;
       return;

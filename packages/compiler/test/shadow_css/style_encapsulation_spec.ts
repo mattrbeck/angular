@@ -123,5 +123,16 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss('@keyframes foo {to {transform: none;}} .box {animation: foo 1s;}');
       expectMatchesShadowCss(':host ::ng-deep .foo {}');
     });
+
+    it('should match ShadowCss output for deprecated shadow-piercing combinators', () => {
+      expectMatchesShadowCss('x >>> y {}');
+      expectMatchesShadowCss('x /deep/ y {}');
+      expectMatchesShadowCss('x ::ng-deep y {}');
+      expectMatchesShadowCss('cmp:host >>> {}');
+      expectMatchesShadowCss('cmp:host >>> child {}');
+      expectMatchesShadowCss('cmp :host >>> {}');
+      expectMatchesShadowCss('cmp :host >>> child {}');
+      expectMatchesShadowCss(':host >>> .x > .y {}');
+    });
   });
 });
