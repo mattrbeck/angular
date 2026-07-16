@@ -165,8 +165,29 @@ any other comment (newlines preserved). No public API changes; the runtime
 at the end of the migration is a comment-strip codemod plus deleting the
 routing branch.
 
+The compiler references the implementation through a postcss-free registry
+(`style_encapsulation_registry.ts`); loading
+`style_encapsulation_shim.ts` registers it as a side effect, and compiling a
+marked stylesheet without it loaded throws an actionable error. This
+indirection is required because putting postcss into the module graph of
+`@angular/compiler` broke every web-test bundle in this repo: the bazel
+esbuild sandbox plugin (`aspect_rules_esbuild`) cannot round-trip
+resolutions that postcss's `browser` field maps to `false` (`path`, `url`,
+`fs`), failing bundles at build time. Real-world bundlers handle the browser
+field correctly (verified with stock esbuild), so this is a repo-tooling
+limitation, not a browser incompatibility.
+
+**Open packaging decision:** how the shim gets loaded in production. AOT
+needs compiler-cli to load it (a deep `@angular/compiler/src/...` import
+works for bazel source builds but not for published fesm-only artifacts);
+JIT needs it in the browser bundle. The likely answer is a secondary entry
+point of `@angular/compiler` (note `ng_package` currently sets
+`use_no_sub = True`), imported by compiler-cli and — for JIT apps — by the
+application. Until then, the node test suites load it explicitly.
+
 ## Open items
 
+- Packaging/loading of the shim for AOT (compiler-cli) and JIT (see above).
 - Line fidelity of rebuilt multi-line selectors (single known gap above).
 - Nesting semantics decision (scope-everything vs ShadowCss's leave-alone).
 - Strict-parser diagnostics as a post-adoption follow-up.
