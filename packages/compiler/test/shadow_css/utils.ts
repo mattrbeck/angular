@@ -6,10 +6,8 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
-import postcss from 'postcss';
-
 import {ShadowCss} from '../../src/shadow_css';
-import styleEncapsulation from '../../src/style_encapsulation';
+import {shimStyleEncapsulation} from '../../src/style_encapsulation_shim';
 import {canonicalizeCss} from './semantic_css';
 
 export function shim(css: string, contentAttr: string, hostAttr: string = '') {
@@ -22,13 +20,7 @@ export function shim(css: string, contentAttr: string, hostAttr: string = '') {
  * the ShadowCss.shimCssText() API used by `shim()`.
  */
 export function shimPostcss(css: string, contentAttr: string, hostAttr: string = '') {
-  return (
-    postcss([styleEncapsulation({content: contentAttr, host: hostAttr, isAngular: true})])
-      // `prev: false` prevents postcss from consuming (and crashing on)
-      // sourceMappingURL comments in the input; `annotation: false` prevents it
-      // from appending its own sourcemap annotation.
-      .process(css, {from: undefined, map: {prev: false, annotation: false}}).css
-  );
+  return shimStyleEncapsulation(css, contentAttr, hostAttr);
 }
 
 const shadowCssMatchers: jasmine.CustomMatcherFactories = {

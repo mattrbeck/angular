@@ -12,6 +12,7 @@ ts_project(
     ),
     deps = [
         "//:node_modules/postcss",
+        "//:node_modules/postcss-safe-parser",
         "//:node_modules/postcss-selector-parser",
     ],
 )

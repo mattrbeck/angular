@@ -6,6 +6,8 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import {encapsulateStyle} from '../../src/render3/view/compiler';
+import {usesPostcssEncapsulation} from '../../src/style_encapsulation_shim';
 import {shim, shimPostcss} from './utils';
 
 /**
@@ -221,6 +223,19 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss('@page { div {} }');
     });
 
+    it('should match ShadowCss output for invalid css', () => {
+      // The fault-tolerant parser shims the valid parts and passes
+      // unparseable text through, like ShadowCss. These compare exact text
+      // since the outputs are not parseable CSS.
+      expect(shimPostcss('one {color: red;}garbage', 'contenta')).toBe(
+        shim('one {color: red;}garbage', 'contenta'),
+      );
+      expect(shimPostcss('a {b}', 'contenta')).toBe(shim('a {b}', 'contenta'));
+      expect(shimPostcss('@import a ; b {c}', 'contenta')).toBe(
+        shim('@import a ; b {c}', 'contenta'),
+      );
+    });
+
     it('should match ShadowCss output for :host-context without a valid argument', () => {
       expectMatchesShadowCss(':host-context .inner {}');
       expectMatchesShadowCss(':host-context() .inner {}');
@@ -247,6 +262,32 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss('div:where(:host-context(backdrop)) :host {}');
     });
 
+    describe('per-stylesheet opt-in marker', () => {
+      it('should detect the marker comment', () => {
+        expect(usesPostcssEncapsulation('/*! use-postcss-encapsulation */ div {}')).toBe(true);
+        expect(usesPostcssEncapsulation('/*!use-postcss-encapsulation*/ div {}')).toBe(true);
+        expect(usesPostcssEncapsulation('div {} /*! use-postcss-encapsulation */')).toBe(true);
+        expect(usesPostcssEncapsulation('div {}')).toBe(false);
+        expect(usesPostcssEncapsulation('/* use-postcss-encapsulation */ div {}')).toBe(false);
+      });
+
+      it('should route marked stylesheets through the postcss encapsulation', () => {
+        // The marker is removed from the output like any other comment.
+        expect(encapsulateStyle('/*! use-postcss-encapsulation */ :host(.foo) {}', 'comp1')).toBe(
+          ' .foo[_nghost-comp1] {}',
+        );
+        // Unmarked stylesheets keep using ShadowCss.
+        expect(encapsulateStyle(':host(.foo) {}', 'comp1')).toBe('.foo[_nghost-comp1] {}');
+      });
+
+      it('should produce equivalent output for marked and unmarked stylesheets', () => {
+        const css = ':host(.foo) .bar {} @media (min-width: 100px) { div { color: red; } }';
+        expect(encapsulateStyle(`/*! use-postcss-encapsulation */ ${css}`, 'c1')).toEqualCss(
+          encapsulateStyle(css, 'c1'),
+        );
+      });
+    });
+
     describe('known divergences from ShadowCss', () => {
       // ShadowCss's regex-based :host-context handling emits accidental
       // artifacts in some degenerate cases (doubled host markers that only
@@ -269,11 +310,10 @@ describe('style encapsulation (postcss)', () => {
         expect(shimPostcss('.\\fc ker {}', 'contenta')).toEqualCss('.\\fc ker[contenta] {}');
       });
 
-      // ShadowCss's regex-based processing passes unparseable CSS through
-      // (shimming what it can); postcss requires parseable input.
-      it('should throw on unparseable css', () => {
-        expect(() => shimPostcss('one {color: red;}garbage', 'contenta')).toThrow();
-        expect(() => shimPostcss('a {b}', 'contenta')).toThrow();
+      // The fault-tolerant parser auto-closes unclosed blocks, which
+      // ShadowCss leaves open. Both shim the valid parts identically.
+      it('should auto-close unclosed blocks', () => {
+        expect(shimPostcss('div { color: red', 'contenta')).toBe('div[contenta] { color: red}');
       });
     });
   });
