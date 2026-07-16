@@ -135,6 +135,82 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss(':host >>> .x > .y {}');
     });
 
+    it('should match ShadowCss output for pseudo selector functions', () => {
+      // :where() and :is() have their inner selectors scoped individually.
+      expectMatchesShadowCss(':where(.one) {}');
+      expectMatchesShadowCss(':where(div.one span.two) {}');
+      expectMatchesShadowCss(':where(.one) .two {}');
+      expectMatchesShadowCss(':where(:host) {}');
+      expectMatchesShadowCss(':where(:host) .one {}');
+      expectMatchesShadowCss(':where(.one) :where(:host) {}');
+      expectMatchesShadowCss(':where(.one :host) {}');
+      expectMatchesShadowCss('div :where(.one) {}');
+      expectMatchesShadowCss(':host :where(.one .two) {}');
+      expectMatchesShadowCss(':where(.one, .two) {}');
+      expectMatchesShadowCss(':where(.one > .two) {}');
+      expectMatchesShadowCss(':where(> .one) {}');
+      expectMatchesShadowCss(':where(:not(.one) ~ .two) {}');
+      expectMatchesShadowCss(':where([foo]) {}');
+      expectMatchesShadowCss(':where(a):where(b) {}');
+      expectMatchesShadowCss('div:is(.foo) {}');
+      expectMatchesShadowCss(':is(.dark :host) {}');
+      expectMatchesShadowCss(':is(.dark) :is(:host) {}');
+      expectMatchesShadowCss(':host:is(.foo) {}');
+      expectMatchesShadowCss(':is(.foo) {}');
+      expectMatchesShadowCss(':is(.foo, .bar, .baz) {}');
+      expectMatchesShadowCss(':is(.foo, .bar) :host {}');
+      expectMatchesShadowCss(
+        ':is(.foo, .bar) :is(.baz) :where(.one, .two) :host :where(.three:first-child) {}',
+      );
+      expectMatchesShadowCss(':where(:is(a)) {}');
+      expectMatchesShadowCss(':where(:is(a, b)) {}');
+      expectMatchesShadowCss(':where(:host:is(.one, .two)) {}');
+      expectMatchesShadowCss(':where(:host :is(.one, .two)) {}');
+      expectMatchesShadowCss(':where(:is(a, b) :is(.one, .two)) {}');
+      expectMatchesShadowCss(
+        ':where(:where(a:has(.foo), b) :is(.one, .two:where(.foo > .bar))) {}',
+      );
+      expectMatchesShadowCss(':where(.two):first-child {}');
+      expectMatchesShadowCss(':first-child:where(.two) {}');
+      expectMatchesShadowCss(':where(.two):nth-child(3) {}');
+      expectMatchesShadowCss('table :where(td, th):hover { color: lime; }');
+      expectMatchesShadowCss(':nth-child(3n of :not(p, a), :is(.foo)) {}');
+
+      // :not() and :has() keep their inner selectors unscoped, but :host
+      // inside them is converted.
+      expectMatchesShadowCss('.header:not(.admin) {}');
+      expectMatchesShadowCss('.header:is(:host > .toolbar, :host ~ .panel) {}');
+      expectMatchesShadowCss('.header:where(:host > .toolbar, :host ~ .panel) {}');
+      expectMatchesShadowCss('.header:not(.admin, :host.super .header) {}');
+      expectMatchesShadowCss('.header:not(.admin, :host.super .header, :host.mega .header) {}');
+      expectMatchesShadowCss('.one :where(.two, :host) {}');
+      expectMatchesShadowCss('.one :where(:host, .two) {}');
+      expectMatchesShadowCss(':is(.foo):is(:host):is(.two) {}');
+      expectMatchesShadowCss(':where(.one, :host .two):first-letter {}');
+      expectMatchesShadowCss(':first-child:where(.one, :host .two) {}');
+      expectMatchesShadowCss(':where(.one, :host .two):nth-child(3):is(.foo, a:where(.bar)) {}');
+      expectMatchesShadowCss('div:has(a) {}');
+      expectMatchesShadowCss('div:has(a) :host {}');
+      expectMatchesShadowCss(':has(a) :host :has(b) {}');
+      expectMatchesShadowCss('div:has(~ .one) {}');
+      expectMatchesShadowCss(':has(a) :has(b) {}');
+      expectMatchesShadowCss(':has(a, b) {}');
+      expectMatchesShadowCss(':has(a, b:where(.foo), :is(.bar)) {}');
+      expectMatchesShadowCss(':has(a, b:where(.foo), :is(.bar):first-child):first-letter {}');
+      expectMatchesShadowCss(':where(a, b:where(.foo), :has(.bar):first-child) {}');
+      expectMatchesShadowCss(':has(.one :host, .two) {}');
+      expectMatchesShadowCss(':has(.one, :host) {}');
+      expectMatchesShadowCss('.foo:not(:host) {}');
+      expectMatchesShadowCss(':host:not(:host.foo) {}');
+      expectMatchesShadowCss(':host:not(.foo:host) {}');
+      expectMatchesShadowCss(':host:not(:host.foo, :host.bar) {}');
+      expectMatchesShadowCss(':host:not(:host.foo, .bar :host) {}');
+
+      // Multi-argument :host is left as-is, like ShadowCss.
+      expectMatchesShadowCss(':host(.a, .b) {}');
+      expectMatchesShadowCss('.outer :host(.a, .b) .inner {}');
+    });
+
     it('should match ShadowCss output for @font-face and @page rules', () => {
       expectMatchesShadowCss('@font-face { font-family {} }');
       expectMatchesShadowCss('@font-face { :host ::ng-deep font-family{} }');

@@ -280,14 +280,17 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
         rule.selector = parser((selectorList: Root) => {
           rewriteHostContext(selectorList, isAngular);
           selectorList.each((selector) => {
-            shimSelector(
-              selector,
-              content,
-              host,
-              legacy,
-              isAngular,
-              selector.nodes.some((node) => isPseudo(node) && node.value === ':host'),
-            );
+            if (isAngular) {
+              shimSelectorAngular(selector, content, host, {shouldScope: false}, true);
+            } else {
+              shimSelector(
+                selector,
+                content,
+                host,
+                legacy,
+                selector.nodes.some((node) => isPseudo(node) && node.value === ':host'),
+              );
+            }
           });
         }).processSync(rule.selector, {lossless: true});
       });
@@ -542,14 +545,195 @@ function createSelectorsFromPermutations(
 }
 
 /**
- * Creates a simple selector node used to scope selectors. This is a class
- * selector (`.name`) by default, or an attribute selector (`[name]`) when
- * targeting Angular's emulated encapsulation.
+ * Creates the attribute selector node used to scope selectors in Angular's
+ * emulated encapsulation, e.g. `[contenta]`.
  */
-function scopeNode(name: string, isAngular: boolean): SelectorChild {
-  return isAngular
-    ? attribute({attribute: name, value: undefined, raws: {}})
-    : className({value: name});
+function scopeAttribute(name: string): SelectorChild {
+  return attribute({attribute: name, value: undefined, raws: {}});
+}
+
+/** Pseudo-classes whose arguments are scoped like top-level selectors. */
+const scopedPseudoFunctions = new Set([':is', ':where']);
+
+/**
+ * State shared while shimming a selector and the arguments of its :is/:where
+ * pseudos. Mirrors ShadowCss's `_shouldScopeIndicator`: selector parts before
+ * the compound containing :host are implicitly global and left unscoped.
+ */
+interface AngularShimState {
+  shouldScope: boolean;
+}
+
+/**
+ * Whether the :host pseudo can be converted into a host attribute selector.
+ * Angular leaves `:host` with a multi-argument selector list as-is.
+ *
+ * Note: deliberately not a type predicate; narrowing the negative case would
+ * exclude all Pseudo nodes.
+ */
+function isConvertibleHost(node: Node): boolean {
+  return isPseudo(node) && node.value === ':host' && node.nodes.length <= 1;
+}
+
+/** Whether the selector contains a convertible :host at any depth. */
+function containsHostDeep(selector: Selector): boolean {
+  return selector.nodes.some(
+    (node) =>
+      isConvertibleHost(node) ||
+      (isPseudo(node) && (node.nodes ?? []).some((inner) => containsHostDeep(inner))),
+  );
+}
+
+/**
+ * Converts convertible :host pseudos found (at any depth) inside the given
+ * functional pseudo's arguments into host attribute selectors, without
+ * scoping anything else, e.g. `:not(:host.foo)` becomes `:not(.foo[hosta])`.
+ */
+function convertNestedHost(pseudoNode: Pseudo, hostAttr: string): void {
+  for (const arg of pseudoNode.nodes) {
+    for (const node of [...arg.nodes]) {
+      if (!isPseudo(node)) {
+        continue;
+      }
+      if (isConvertibleHost(node)) {
+        if (node.length > 0) {
+          safeInsertAll(node, node.first);
+        }
+        safeInsert(node, scopeAttribute(hostAttr));
+        node.remove();
+      } else if (node.nodes.length > 0) {
+        convertNestedHost(node, hostAttr);
+      }
+    }
+  }
+}
+
+/**
+ * Scopes the selector following Angular's ShadowCss rules:
+ * - :host is rewritten as a [hostAttr] attribute selector. Its argument, if
+ *   any, is hoisted into the host compound, e.g. `:host(.foo)` -> `.foo[hostAttr]`.
+ * - Selectors after ::ng-deep (or the deprecated >>> and /deep/ combinators)
+ *   are not scoped, and the deep token is removed.
+ * - Selector parts before the compound containing :host are not scoped.
+ *   They're implicitly global.
+ * - Compounds consisting solely of :is/:where pseudos have their inner
+ *   selectors scoped individually, like top-level selectors.
+ * - In all other compounds, a [contentAttr] attribute is added, and :host
+ *   pseudos nested inside functional pseudo arguments (:not, :has, ...) are
+ *   converted without scoping their sibling selectors.
+ */
+function shimSelectorAngular(
+  selector: Selector,
+  contentAttr: string,
+  hostAttr: string,
+  state: AngularShimState,
+  isParentSelector: boolean,
+): void {
+  if (isParentSelector || state.shouldScope) {
+    state.shouldScope = !containsHostDeep(selector);
+  }
+
+  // Split the selector into compound selectors. Compounds after a deep token
+  // (::ng-deep, >>>, /deep/) are left unscoped.
+  const compounds: Array<{nodes: Node[]; scoped: boolean}> = [];
+  let compound: Node[] = [];
+  let afterDeep = false;
+  for (const node of [...selector.nodes]) {
+    if (isCombinator(node)) {
+      compounds.push({nodes: compound, scoped: !afterDeep});
+      compound = [];
+      if (node.value === '>>>' || node.value === '/deep/') {
+        node.value = ' ';
+        afterDeep = true;
+      }
+    } else if (isPseudo(node) && node.value === '::ng-deep') {
+      // Everything before ::ng-deep (even in the same compound) is scoped,
+      // everything after is not.
+      compounds.push({nodes: compound, scoped: !afterDeep});
+      compound = [];
+      afterDeep = true;
+      touchupCombinatorsAroundNgDeep(node);
+      node.remove();
+    } else {
+      compound.push(node);
+    }
+  }
+  compounds.push({nodes: compound, scoped: !afterDeep});
+
+  for (const {nodes, scoped} of compounds) {
+    if (!scoped || nodes.length === 0) {
+      continue;
+    }
+
+    // Unwrap :UNSCOPED markers (from :host-context rewriting): their contents
+    // represent the host's ancestor context and are not scoped.
+    if (nodes.some((node) => isPseudo(node) && node.value === ':UNSCOPED')) {
+      for (const node of nodes) {
+        if (isPseudo(node) && node.value === ':UNSCOPED') {
+          node.replaceWith(node.first);
+        }
+      }
+      continue;
+    }
+
+    // Compounds consisting solely of :is/:where have their inner selectors
+    // scoped individually.
+    const pureIsWhere = nodes.every(
+      (node) => isPseudo(node) && scopedPseudoFunctions.has(node.value),
+    );
+    if (pureIsWhere) {
+      for (const pseudoNode of nodes as Pseudo[]) {
+        if (pseudoNode.nodes.some((arg) => containsHostDeep(arg))) {
+          state.shouldScope = true;
+        }
+        for (const arg of pseudoNode.nodes) {
+          shimSelectorAngular(arg, contentAttr, hostAttr, state, false);
+        }
+      }
+      continue;
+    }
+
+    // Note: a compound may contain several :host pseudos, e.g. produced by
+    // the :host-context rewriting of `:host-context(.a):host-context(.b)`.
+    const hostNodes = nodes.filter(isConvertibleHost) as Pseudo[];
+    const hasNestedHost = nodes.some(
+      (node) =>
+        isPseudo(node) &&
+        !isConvertibleHost(node) &&
+        node.nodes.some((arg) => containsHostDeep(arg)),
+    );
+    if (!state.shouldScope && hostNodes.length === 0 && !hasNestedHost) {
+      // Before the :host compound: implicitly global.
+      continue;
+    }
+    if (hostNodes.length > 0 || hasNestedHost) {
+      // Compounds after the :host compound are scoped.
+      state.shouldScope = true;
+    }
+
+    // Convert :host pseudos nested inside functional pseudo arguments.
+    for (const node of nodes) {
+      if (isPseudo(node) && !isConvertibleHost(node) && node.nodes.length > 0) {
+        convertNestedHost(node, hostAttr);
+      }
+    }
+
+    if (hostNodes.length > 0) {
+      for (const [i, hostNode] of hostNodes.entries()) {
+        if (hostNode.length > 0) {
+          // Hoist `arg` into the host compound, e.g. `.foo` in `:host(.foo)`.
+          safeInsertAll(hostNode, hostNode.first);
+        }
+        if (i === 0) {
+          // The host attribute is only needed once per compound.
+          safeInsert(hostNode, scopeAttribute(hostAttr));
+        }
+        hostNode.remove();
+      }
+    } else {
+      safeInsert(nodes[0], scopeAttribute(contentAttr));
+    }
+  }
 }
 
 /**
@@ -565,7 +749,6 @@ function shimSelector(
   contentClass: string,
   hostClass: string,
   legacy: boolean,
-  isAngular: boolean,
   containsHostPseudo: boolean,
 ) {
   let seenDeep = false;
@@ -574,13 +757,6 @@ function shimSelector(
   let needsContentClass = !containsHostPseudo;
   selector.each((node: Node, index: number) => {
     if (isCombinator(node)) {
-      if (isAngular && (node.value === '>>>' || node.value === '/deep/')) {
-        // The deprecated shadow-piercing combinators act like ::ng-deep:
-        // selectors after them are not scoped. They're replaced with a
-        // descendant combinator.
-        seenDeep = true;
-        node.value = ' ';
-      }
       seenDeep ||= legacy && seenHost; // Don't scope after :host in legacy mode
       needsContentClass = !seenDeep && containsHostPseudo === seenHost;
       return;
@@ -597,7 +773,7 @@ function shimSelector(
         if (!seenDeep) {
           // While it _should_ be illegal to write `::ng-deep :host`, some tests
           // rely on the fact that `::ng-deep` escapes `:host` shimming.
-          safeInsert(node, scopeNode(hostClass, isAngular));
+          safeInsert(node, className({value: hostClass}));
           node.remove();
         }
       } else if (node.value === ':UNSCOPED') {
@@ -623,7 +799,7 @@ function shimSelector(
         isPseudoElement(next) ||
         (!node.prev() && isPseudoElement(node))
       ) {
-        safeInsert(node, scopeNode(contentClass, isAngular));
+        safeInsert(node, className({value: contentClass}));
         needsContentClass = false;
       }
     }
