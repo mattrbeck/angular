@@ -10,6 +10,10 @@ ts_project(
             "src/**/*.ts",
         ],
     ),
+    deps = [
+        "//:node_modules/postcss",
+        "//:node_modules/postcss-selector-parser",
+    ],
 )
 
 tsec_test(

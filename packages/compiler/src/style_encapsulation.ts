@@ -17,7 +17,7 @@ import type {
   Selector,
   Tag,
 } from 'postcss-selector-parser';
-import * as parser from 'postcss-selector-parser';
+import parser from 'postcss-selector-parser';
 import {
   className,
   combinator,
@@ -266,7 +266,7 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
   };
 };
 plugin.postcss = true;
-export = plugin;
+export default plugin;
 
 /** Helper type to unwrap the child type of Container. */
 type UnwrapContainerChild<T> = T extends Container<infer Value, infer Child> ? Child : never;
