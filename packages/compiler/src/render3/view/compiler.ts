@@ -11,7 +11,10 @@ import * as core from '../../core';
 import * as o from '../../output/output_ast';
 import {ParseError, ParseSourceSpan} from '../../parse_util';
 import {namespaceCssVariables, ShadowCss} from '../../shadow_css';
-import {shimStyleEncapsulation, usesPostcssEncapsulation} from '../../style_encapsulation_shim';
+import {
+  getPostcssStyleEncapsulation,
+  usesPostcssEncapsulation,
+} from '../../style_encapsulation_registry';
 import {CompilationJobKind, TemplateCompilationMode} from '../../template/pipeline/src/compilation';
 import {emitHostBindingFunction, emitTemplateFn, transform} from '../../template/pipeline/src/emit';
 import {ingestComponent, ingestHostBinding} from '../../template/pipeline/src/ingest';
@@ -632,7 +635,7 @@ function compileStyles(styles: string[], selector: string, hostSelector: string)
     // Stylesheets carrying the `/*! use-postcss-encapsulation */` marker opt
     // into the postcss-based encapsulation, allowing progressive adoption.
     return usesPostcssEncapsulation(style)
-      ? shimStyleEncapsulation(style, selector, hostSelector)
+      ? getPostcssStyleEncapsulation()(style, selector, hostSelector)
       : shadowCss!.shimCssText(style, selector, hostSelector);
   });
 }
@@ -654,7 +657,7 @@ export function encapsulateStyle(style: string, componentIdentifier?: string): s
     ? HOST_ATTR.replace(COMPONENT_VARIABLE, componentIdentifier)
     : HOST_ATTR;
   if (usesPostcssEncapsulation(style)) {
-    return shimStyleEncapsulation(style, selector, hostSelector);
+    return getPostcssStyleEncapsulation()(style, selector, hostSelector);
   }
   const shadowCss = new ShadowCss();
   return shadowCss.shimCssText(style, selector, hostSelector);

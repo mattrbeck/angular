@@ -3,6 +3,10 @@ load("//tools:defaults.bzl", "ts_project", "zoneless_jasmine_test", "zoneless_we
 # Test that should only be run in node
 NODE_ONLY = [
     "**/*_node_only_spec.ts",
+    # These depend on postcss, whose Node-specific imports cannot be bundled
+    # by the web-test pipeline.
+    "shadow_css/node_only_utils.ts",
+    "shadow_css/semantic_css.ts",
 ]
 
 ts_project(
@@ -13,8 +17,6 @@ ts_project(
         exclude = NODE_ONLY,
     ),
     deps = [
-        "//:node_modules/postcss",
-        "//:node_modules/postcss-selector-parser",
         "//:node_modules/source-map",
         "//packages/common",
         "//packages/compiler",
@@ -38,6 +40,8 @@ ts_project(
     ),
     deps = [
         ":test_lib",
+        "//:node_modules/postcss",
+        "//:node_modules/postcss-selector-parser",
         "//:node_modules/typescript",
         "//packages/compiler",
         "//packages/compiler/test/expression_parser/utils",

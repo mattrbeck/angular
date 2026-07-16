@@ -10,28 +10,17 @@ import postcss from 'postcss';
 import safeParser from 'postcss-safe-parser';
 
 import styleEncapsulation from './style_encapsulation';
+import {setPostcssStyleEncapsulation} from './style_encapsulation_registry';
 
-/**
- * Marker comment that opts a stylesheet into the postcss-based style
- * encapsulation instead of ShadowCss, enabling progressive per-component
- * (per-stylesheet) adoption without any public API changes. It works
- * identically for AOT and JIT compilation since both run the same style
- * compilation path.
- *
- * The `/*!` form survives CSS preprocessors and minifiers that strip regular
- * comments. The marker itself is removed from the emitted styles (it is
- * handled like any other non-sourcemap comment).
- */
-const POSTCSS_ENCAPSULATION_MARKER = /\/\*!\s*use-postcss-encapsulation\s*\*\//;
-
-/** Whether the stylesheet opts into the postcss-based style encapsulation. */
-export function usesPostcssEncapsulation(cssText: string): boolean {
-  return POSTCSS_ENCAPSULATION_MARKER.test(cssText);
-}
+export {usesPostcssEncapsulation} from './style_encapsulation_registry';
 
 /**
  * Shims the given css with the postcss-based style encapsulation, mirroring
  * the `ShadowCss.shimCssText()` API.
+ *
+ * Loading this module registers the implementation with the compiler's style
+ * encapsulation registry; the compiler itself does not import postcss (see
+ * `style_encapsulation_registry.ts`).
  *
  * @param cssText the css text to shim.
  * @param selector the attribute added to all elements inside the host.
@@ -57,3 +46,5 @@ export function shimStyleEncapsulation(
     map: {prev: false, annotation: false},
   }).css;
 }
+
+setPostcssStyleEncapsulation(shimStyleEncapsulation);

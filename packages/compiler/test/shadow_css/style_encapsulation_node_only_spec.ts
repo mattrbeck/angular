@@ -7,8 +7,10 @@
  */
 
 import {encapsulateStyle} from '../../src/render3/view/compiler';
-import {usesPostcssEncapsulation} from '../../src/style_encapsulation_shim';
-import {shim, shimPostcss} from './utils';
+import {setPostcssStyleEncapsulation} from '../../src/style_encapsulation_registry';
+import {shimStyleEncapsulation, usesPostcssEncapsulation} from '../../src/style_encapsulation_shim';
+import {shimPostcss} from './node_only_utils';
+import {shim} from './utils';
 
 /**
  * Expects the PostCSS-based encapsulation to produce output semantically
@@ -285,6 +287,21 @@ describe('style encapsulation (postcss)', () => {
         expect(encapsulateStyle(`/*! use-postcss-encapsulation */ ${css}`, 'c1')).toEqualCss(
           encapsulateStyle(css, 'c1'),
         );
+      });
+
+      it('should throw a helpful error when the implementation is not loaded', () => {
+        // The compiler references the implementation through a registry so
+        // that its module graph (and browser bundles of it) don't depend on
+        // postcss; marked stylesheets require the implementation module to
+        // have been loaded.
+        setPostcssStyleEncapsulation(null);
+        try {
+          expect(() =>
+            encapsulateStyle('/*! use-postcss-encapsulation */ div {}', 'c1'),
+          ).toThrowError(/no implementation is loaded/);
+        } finally {
+          setPostcssStyleEncapsulation(shimStyleEncapsulation);
+        }
       });
     });
 

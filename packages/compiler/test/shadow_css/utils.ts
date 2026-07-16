@@ -7,42 +7,22 @@
  */
 
 import {ShadowCss} from '../../src/shadow_css';
-import {shimStyleEncapsulation} from '../../src/style_encapsulation_shim';
-import {canonicalizeCss} from './semantic_css';
 
 export function shim(css: string, contentAttr: string, hostAttr: string = '') {
   const shadowCss = new ShadowCss();
   return shadowCss.shimCssText(css, contentAttr, hostAttr);
 }
 
-/**
- * Shims the given css with the PostCSS-based style encapsulation, mirroring
- * the ShadowCss.shimCssText() API used by `shim()`.
- */
-export function shimPostcss(css: string, contentAttr: string, hostAttr: string = '') {
-  return shimStyleEncapsulation(css, contentAttr, hostAttr);
-}
-
+// Note: this textual comparison is upgraded to a semantic one for the node
+// test run by ./node_only_utils.ts, which cannot be loaded in web tests
+// since its postcss dependency cannot be bundled by the web-test pipeline.
 const shadowCssMatchers: jasmine.CustomMatcherFactories = {
   toEqualCss: function (): jasmine.CustomMatcher {
     return {
       compare: function (actual: string, expected: string): jasmine.CustomMatcherResult {
-        // Prefer a semantic comparison so that equivalent output that differs
-        // only syntactically (e.g. `.foo[hosta]` vs `[hosta].foo`) is treated
-        // as equal. Fall back to a whitespace-insensitive textual comparison
-        // when either side is not parseable as standalone CSS (some tests use
-        // intentionally invalid CSS or placeholder markers).
-        let passes: boolean;
-        let actualCss: string;
-        let expectedCss: string;
-        try {
-          actualCss = canonicalizeCss(actual);
-          expectedCss = canonicalizeCss(expected);
-        } catch {
-          actualCss = extractCssContent(actual);
-          expectedCss = extractCssContent(expected);
-        }
-        passes = actualCss === expectedCss;
+        const actualCss = extractCssContent(actual);
+        const expectedCss = extractCssContent(expected);
+        const passes = actualCss === expectedCss;
         return {
           pass: passes,
           message: passes
@@ -71,9 +51,10 @@ declare global {
   namespace jasmine {
     interface Matchers<T> {
       /**
-       * Expect the actual css value to be equal to the expected css,
-       * for this comparison extra spacing and newlines are ignored so
-       * that only the core css content is being compared.
+       * Expect the actual css value to be equal to the expected css. In web
+       * tests extra spacing and newlines are ignored so that only the core
+       * css content is compared; in node tests the comparison is semantic
+       * (see ./node_only_utils.ts and ./semantic_css.ts).
        */
       toEqualCss(expected: string): void;
     }
