@@ -268,6 +268,13 @@ describe('style encapsulation (postcss)', () => {
         expect(shimPostcss('.\\fc ber {}', 'contenta')).toEqualCss('.\\fc ber[contenta] {}');
         expect(shimPostcss('.\\fc ker {}', 'contenta')).toEqualCss('.\\fc ker[contenta] {}');
       });
+
+      // ShadowCss's regex-based processing passes unparseable CSS through
+      // (shimming what it can); postcss requires parseable input.
+      it('should throw on unparseable css', () => {
+        expect(() => shimPostcss('one {color: red;}garbage', 'contenta')).toThrow();
+        expect(() => shimPostcss('a {b}', 'contenta')).toThrow();
+      });
     });
   });
 });
