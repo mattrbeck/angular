@@ -40,8 +40,11 @@ const shadowCssMatchers: jasmine.CustomMatcherFactories = {
         let actualCss: string;
         let expectedCss: string;
         try {
-          actualCss = canonicalizeCss(actual);
-          expectedCss = canonicalizeCss(expected);
+          // Keep empty rules: most shadow_css fixtures have empty bodies, and
+          // removing them would compare all such rules equal regardless of
+          // how their selectors were shimmed.
+          actualCss = canonicalizeCss(actual, {removeEmptyRules: false});
+          expectedCss = canonicalizeCss(expected, {removeEmptyRules: false});
         } catch {
           actualCss = extractCssContent(actual);
           expectedCss = extractCssContent(expected);

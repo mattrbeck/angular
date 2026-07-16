@@ -1102,17 +1102,34 @@ class ASTFormatter {
 // 10. CORE PIPELINE ORCHESTRATOR & DIFF UTILITIES
 // ============================================================================
 
-export function canonicalizeCss(css: string): string {
+export interface CanonicalizeOptions {
+  /**
+   * Whether empty rules are removed (default true).
+   *
+   * Disable when comparing outputs in which the selector rewriting itself is
+   * under test (e.g. style encapsulation of `.foo {}` fixtures): removing
+   * empty rules would otherwise make all empty-bodied rules compare equal
+   * regardless of their selectors.
+   */
+  removeEmptyRules?: boolean;
+}
+
+export function canonicalizeCss(css: string, options: CanonicalizeOptions = {}): string {
+  const {removeEmptyRules = true} = options;
   const root = postcss.parse(css);
 
   AtRuleParamsNormalizer.normalizeAll(root);
   RuleSplitter.splitCommaSelectors(root);
   root.walkRules((rule: Rule) => SelectorNormalizer.normalizeRuleSelector(rule));
   DeclarationOptimizer.optimizeAll(root);
-  ASTCleaner.removeEmptyNodes(root);
+  if (removeEmptyRules) {
+    ASTCleaner.removeEmptyNodes(root);
+  }
   RuleDeduplicator.deduplicateAll(root);
   RuleMerger.mergeAll(root);
-  ASTCleaner.removeEmptyNodes(root);
+  if (removeEmptyRules) {
+    ASTCleaner.removeEmptyNodes(root);
+  }
   RuleSorter.sortAll(root);
   ASTFormatter.format(root);
 
