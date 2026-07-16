@@ -226,5 +226,39 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss(':host-context() .inner {}');
       expectMatchesShadowCss(':host-context(.foo) .bar {}');
     });
+
+    it('should match ShadowCss output for :host-context', () => {
+      expectMatchesShadowCss(':host-context(.one):host-context(.two) {}');
+      expectMatchesShadowCss(':host-context(.X):host-context(.Y):host-context(.Z) {}');
+      expectMatchesShadowCss(':host-context(.one,.two) .inner {}');
+      expectMatchesShadowCss(':host-context(div):host(.x) > .y {}');
+      expectMatchesShadowCss(':host-context(.one) :host {}');
+      expectMatchesShadowCss(':host-context(div) :host(.x) > .y {}');
+      expectMatchesShadowCss(':host-context(div) > :host(.x) > .y {}');
+      expectMatchesShadowCss(':host-context(outer1) :host(bar) {}');
+    });
+
+    describe('known divergences from ShadowCss', () => {
+      // ShadowCss's regex-based :host-context handling emits accidental
+      // artifacts in some degenerate cases (doubled host markers that only
+      // change specificity, or dangling bare `:host-context` prefixes that
+      // match nothing). The postcss implementation intentionally produces
+      // cleaner selectors matching the same elements.
+      it('should produce a single host marker for :host followed by :host-context', () => {
+        // ShadowCss: `.one[hosta][hosta], .one [hosta]`.
+        expect(shimPostcss(':host:host-context(.one) {}', 'contenta', 'hosta')).toEqualCss(
+          '.one[hosta], .one [hosta] {}',
+        );
+      });
+
+      // postcss-selector-parser is spec-compliant for hex escapes terminated
+      // by a space (the space is part of the escape), while ShadowCss splits
+      // `.\fc ker` into two compound selectors when the character following
+      // the space is not a hex digit.
+      it('should treat a space terminating a hex escape as part of the escape', () => {
+        expect(shimPostcss('.\\fc ber {}', 'contenta')).toEqualCss('.\\fc ber[contenta] {}');
+        expect(shimPostcss('.\\fc ker {}', 'contenta')).toEqualCss('.\\fc ker[contenta] {}');
+      });
+    });
   });
 });

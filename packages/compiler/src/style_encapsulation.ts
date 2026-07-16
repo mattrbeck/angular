@@ -394,6 +394,7 @@ function rewriteHostContext(selectorList: Root, isAngular: boolean): void {
     // The index of the compound containing :host-context(). Note: This assumes
     // all :host-context() are in the same compound selector. Bad input is UB.
     let hostContextIndex: number | undefined;
+    let lastHostContextNodeIndex = -1;
     selector.each((node: Node, index: number) => {
       if (isCombinator(node)) {
         currentCompoundIndex = index + 1;
@@ -413,20 +414,51 @@ function rewriteHostContext(selectorList: Root, isAngular: boolean): void {
         }
         hostContextNodes.push(node);
         hostContextIndex ??= currentCompoundIndex;
-        node.replaceWith(hostPseudo());
+        lastHostContextNodeIndex = index;
+        if (!isAngular) {
+          node.replaceWith(hostPseudo());
+        }
       }
     });
 
-    if (hostContextIndex !== undefined) {
-      // Create every permutation of :host-context arguments.
-      const nodePermutations = getNodePermutations(hostContextNodes);
-      const replacementSelectors = createSelectorsFromPermutations(
-        selector,
-        nodePermutations,
-        hostContextIndex,
-      );
+    if (hostContextIndex === undefined) return;
+
+    if (isAngular) {
+      // Angular's combination of :host-context arguments differs from ACX's:
+      // - each :host-context may hold a comma-separated selector list, and
+      //   every combination of one selector per :host-context is emitted
+      // - each additional context selector is combined on the same element
+      //   as, as an ancestor of, or as a descendant of the previous
+      //   combination (rather than every ordered set partition)
+      // - when the selector already contains :host after the :host-context,
+      //   the context is combined in place without adding a host marker
+      const hasHost = containsHostDeep(selector);
+      const hasHostAfterContext = selector.nodes
+        .slice(lastHostContextNodeIndex + 1)
+        .some(nodeContainsHostDeep);
+      const nodePermutations = getNodePermutationsAngular(hostContextNodes);
+      for (const node of hostContextNodes) {
+        if (hasHost) {
+          node.remove();
+        } else {
+          node.replaceWith(hostPseudo());
+        }
+      }
+      const replacementSelectors = hasHostAfterContext
+        ? createSelectorsFromPermutationsInPlace(selector, nodePermutations, hostContextIndex)
+        : createSelectorsFromPermutations(selector, nodePermutations, hostContextIndex);
       selector.replaceWith(...replacementSelectors);
+      return;
     }
+
+    // Create every permutation of :host-context arguments.
+    const nodePermutations = getNodePermutations(hostContextNodes);
+    const replacementSelectors = createSelectorsFromPermutations(
+      selector,
+      nodePermutations,
+      hostContextIndex,
+    );
+    selector.replaceWith(...replacementSelectors);
   });
 }
 
@@ -497,6 +529,108 @@ function getNodePermutations(hostContextNodes: Pseudo[]): CombinatorOrPseudo[][]
     permutationsWithCombinators.push(permutationWithCombinators);
   }
   return permutationsWithCombinators;
+}
+
+/**
+ * Returns the combinations of :host-context arguments that Angular's
+ * ShadowCss generates.
+ *
+ * Every combination of one selector per (comma-separated) :host-context
+ * argument list is expanded. Within a combination, each additional context
+ * selector is placed on the same element as, as an ancestor of, and as a
+ * descendant of the previous combination. For example,
+ * :host-context(.x):host-context(.y) produces:
+ *
+ * ```
+ * [
+ *   ['.x.y'],
+ *   ['.x', ' ', '.y'],
+ *   ['.y', ' ', '.x'],
+ * ]
+ * ```
+ */
+function getNodePermutationsAngular(hostContextNodes: Pseudo[]): CombinatorOrPseudo[][] {
+  if (hostContextNodes.length === 0) return [];
+
+  // Each :host-context may contain a comma-separated list of selectors; every
+  // combination of one selector per :host-context forms a group.
+  let groups: Selector[][] = [[]];
+  for (const node of hostContextNodes) {
+    const args = (node.nodes as Selector[]).filter((arg) => arg.length > 0);
+    const nextGroups: Selector[][] = [];
+    for (const group of groups) {
+      for (const arg of args) {
+        nextGroups.push([...group, arg]);
+      }
+    }
+    groups = nextGroups;
+  }
+
+  const permutations: CombinatorOrPseudo[][] = [];
+  for (const group of groups) {
+    // Combine the group's context selectors. Each combination is an array of
+    // compound selectors (joined by descendant combinators below), and each
+    // compound is an array of context selectors on the same element.
+    let combined: Selector[][][] = [[[group[group.length - 1]]]];
+    for (let i = group.length - 2; i >= 0; i--) {
+      const context = group[i];
+      const nextCombined: Selector[][][] = [];
+      for (const combination of combined) {
+        // On the same element as the previous combination.
+        nextCombined.push([[context, ...combination[0]], ...combination.slice(1)]);
+        // As an ancestor of the previous combination.
+        nextCombined.push([[context], ...combination]);
+        // As a descendant of the previous combination.
+        nextCombined.push([...combination, [context]]);
+      }
+      combined = nextCombined;
+    }
+
+    for (const combination of combined) {
+      const permutation: CombinatorOrPseudo[] = [];
+      for (const compound of combination) {
+        // Place the compound in an :UNSCOPED since it represents the host's
+        // context.
+        permutation.push(unscoped(selectorFromNodes(compound.flatMap((arg) => arg.nodes))));
+        permutation.push(descendantCombinator());
+      }
+      permutation.pop(); // Remove the trailing combinator.
+      permutations.push(permutation);
+    }
+  }
+  return permutations;
+}
+
+/**
+ * Insert each permutation of nodes into a clone of the given selector at the
+ * hostContextIndex, in place: the most local compound of the permutation is
+ * merged into the compound at hostContextIndex when one remains there. Used
+ * when the selector already contains :host after the :host-context, where
+ * Angular emits a single combined selector per permutation.
+ */
+function createSelectorsFromPermutationsInPlace(
+  selector: Selector,
+  permutations: CombinatorOrPseudo[][],
+  hostContextIndex: number,
+): Selector[] {
+  if (permutations.length === 0) return [selector];
+  const replacementSelectors: Selector[] = [];
+  for (const permutation of permutations) {
+    const replacement = selector.clone();
+    const nodeAtIndex = hostContextIndex < replacement.length && replacement.at(hostContextIndex);
+    if (nodeAtIndex && !isCombinator(nodeAtIndex)) {
+      // Merge the most local compound of the permutation into the remaining
+      // compound, e.g. `div` of `:host-context(div):host(.x)` onto `:host(.x)`.
+      const lastNode = permutation.pop() as Pseudo; // :UNSCOPED()
+      safeInsertAll(nodeAtIndex, lastNode.first);
+    }
+    for (const node of permutation) {
+      node.parent = replacement;
+    }
+    replacement.nodes.splice(hostContextIndex, 0, ...permutation);
+    replacementSelectors.push(replacement);
+  }
+  return replacementSelectors;
 }
 
 /**
@@ -575,13 +709,17 @@ function isConvertibleHost(node: Node): boolean {
   return isPseudo(node) && node.value === ':host' && node.nodes.length <= 1;
 }
 
+/** Whether the node is (or contains, at any depth) a convertible :host. */
+function nodeContainsHostDeep(node: Node): boolean {
+  return (
+    isConvertibleHost(node) ||
+    (isPseudo(node) && (node.nodes ?? []).some((inner) => containsHostDeep(inner)))
+  );
+}
+
 /** Whether the selector contains a convertible :host at any depth. */
 function containsHostDeep(selector: Selector): boolean {
-  return selector.nodes.some(
-    (node) =>
-      isConvertibleHost(node) ||
-      (isPseudo(node) && (node.nodes ?? []).some((inner) => containsHostDeep(inner))),
-  );
+  return selector.nodes.some(nodeContainsHostDeep);
 }
 
 /**
