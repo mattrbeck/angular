@@ -18,7 +18,12 @@ import type {
   Tag,
 } from 'postcss-selector-parser';
 import parser from 'postcss-selector-parser';
-import {
+
+// Note: destructured from the default export rather than imported as named
+// imports since postcss-selector-parser is a CommonJS module whose named
+// exports aren't statically detectable when loaded from an ES module in Node.
+const {
+  attribute,
   className,
   combinator,
   isCombinator,
@@ -30,7 +35,7 @@ import {
   isUniversal,
   pseudo,
   selector,
-} from 'postcss-selector-parser';
+} = parser;
 
 interface StyleEncapsulationOptions extends ProcessOptions {
   /**
@@ -51,6 +56,15 @@ interface StyleEncapsulationOptions extends ProcessOptions {
    * When enabled, selectors after :host or :host-context are not encapsulated.
    */
   readonly legacy?: boolean;
+  /**
+   * Whether to emulate Angular's emulated style encapsulation behavior.
+   *
+   * When enabled, `content` and `host` are treated as attribute names rather
+   * than class names, and selectors are scoped with attribute selectors.
+   *
+   * E.g. `.foo` becomes `.foo[content]` instead of `.foo.content`.
+   */
+  readonly isAngular?: boolean;
 }
 
 // LINT.IfChange
@@ -191,7 +205,7 @@ function splitRepeatedQuoteAware(str: string): string[] {
 }
 
 const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
-  const {content = 'content', host = 'host', legacy = false} = opts;
+  const {content = 'content', host = 'host', legacy = false, isAngular = false} = opts;
   return {
     postcssPlugin: 'postcss-style-encapsulation',
     // tslint:disable-next-line:enforce-name-casing
@@ -257,6 +271,7 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
               content,
               host,
               legacy,
+              isAngular,
               selector.nodes.some((node) => isPseudo(node) && node.value === ':host'),
             );
           });
@@ -432,6 +447,17 @@ function createSelectorsFromPermutations(
 }
 
 /**
+ * Creates a simple selector node used to scope selectors. This is a class
+ * selector (`.name`) by default, or an attribute selector (`[name]`) when
+ * targeting Angular's emulated encapsulation.
+ */
+function scopeNode(name: string, isAngular: boolean): SelectorChild {
+  return isAngular
+    ? attribute({attribute: name, value: undefined, raws: {}})
+    : className({value: name});
+}
+
+/**
  * Scopes the selector with the given content and host classes following a few
  * rules:
  * - :host is rewritten as .hostClass. :host-context is assumed to be absent.
@@ -444,6 +470,7 @@ function shimSelector(
   contentClass: string,
   hostClass: string,
   legacy: boolean,
+  isAngular: boolean,
   containsHostPseudo: boolean,
 ) {
   let seenDeep = false;
@@ -468,7 +495,7 @@ function shimSelector(
         if (!seenDeep) {
           // While it _should_ be illegal to write `::ng-deep :host`, some tests
           // rely on the fact that `::ng-deep` escapes `:host` shimming.
-          safeInsert(node, className({value: hostClass}));
+          safeInsert(node, scopeNode(hostClass, isAngular));
           node.remove();
         }
       } else if (node.value === ':UNSCOPED') {
@@ -494,7 +521,7 @@ function shimSelector(
         isPseudoElement(next) ||
         (!node.prev() && isPseudoElement(node))
       ) {
-        safeInsert(node, className({value: contentClass}));
+        safeInsert(node, scopeNode(contentClass, isAngular));
         needsContentClass = false;
       }
     }

@@ -6,12 +6,25 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import postcss from 'postcss';
+
 import {ShadowCss} from '../../src/shadow_css';
+import styleEncapsulation from '../../src/style_encapsulation';
 import {canonicalizeCss} from './semantic_css';
 
 export function shim(css: string, contentAttr: string, hostAttr: string = '') {
   const shadowCss = new ShadowCss();
   return shadowCss.shimCssText(css, contentAttr, hostAttr);
+}
+
+/**
+ * Shims the given css with the PostCSS-based style encapsulation, mirroring
+ * the ShadowCss.shimCssText() API used by `shim()`.
+ */
+export function shimPostcss(css: string, contentAttr: string, hostAttr: string = '') {
+  return postcss([
+    styleEncapsulation({content: contentAttr, host: hostAttr, isAngular: true}),
+  ]).process(css, {from: undefined}).css;
 }
 
 const shadowCssMatchers: jasmine.CustomMatcherFactories = {
