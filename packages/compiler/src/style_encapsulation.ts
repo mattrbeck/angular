@@ -267,6 +267,16 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
           // https://drafts.csswg.org/css-animations/#typedef-keyframe-selector
           return;
         }
+        if (isAngular && hasUnscopableAtRuleAncestor(rule)) {
+          // Rules inside @font-face or @page cannot be scoped. Such rules are
+          // usually authoring errors (e.g. `:host ::ng-deep` applied to
+          // imported styles containing @font-face); Angular strips the
+          // scoping selectors from them instead of encapsulating.
+          rule.selector = parser((selectorList: Root) => {
+            stripScopingSelectors(selectorList);
+          }).processSync(rule.selector, {lossless: true});
+          return;
+        }
         rule.selector = parser((selectorList: Root) => {
           rewriteHostContext(selectorList, isAngular);
           selectorList.each((selector) => {
@@ -331,6 +341,44 @@ type SelectorChild = UnwrapContainerChild<Selector>;
 type CombinatorOrPseudo = Combinator | Pseudo;
 
 const atRulesToSkip = new Set(['keyframes', '-webkit-keyframes']);
+
+/** At-rules whose contents cannot contain scoped selectors, e.g. @font-face. */
+const unscopableAtRules = new Set(['font-face', 'page']);
+
+/** Whether the rule is inside an at-rule that cannot contain scoped selectors. */
+function hasUnscopableAtRuleAncestor(rule: Rule): boolean {
+  type Ancestor = {type: string; name?: string; parent?: Ancestor} | undefined;
+  for (let parent = rule.parent as Ancestor; parent; parent = parent.parent) {
+    if (
+      parent.type === 'atrule' &&
+      parent.name !== undefined &&
+      unscopableAtRules.has(parent.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Removes scoping selectors (:host, :host-context, ::ng-deep and the
+ * shadow-piercing combinators) from the given selector list. Used for rules
+ * that cannot be encapsulated, such as those inside @font-face.
+ */
+function stripScopingSelectors(selectorList: Root): void {
+  selectorList.each((selector: Selector) => {
+    selector.each((node: Node) => {
+      if (isCombinator(node) && (node.value === '>>>' || node.value === '/deep/')) {
+        node.value = ' ';
+      } else if (
+        isPseudo(node) &&
+        (node.value === ':host' || node.value === ':host-context' || node.value === '::ng-deep')
+      ) {
+        node.remove();
+      }
+    });
+  });
+}
 
 /**
  * Rewrites :host-context selectors into their equivalent :host selectors and

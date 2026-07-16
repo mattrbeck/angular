@@ -135,6 +135,16 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss(':host >>> .x > .y {}');
     });
 
+    it('should match ShadowCss output for @font-face and @page rules', () => {
+      expectMatchesShadowCss('@font-face { font-family {} }');
+      expectMatchesShadowCss('@font-face { :host ::ng-deep font-family{} }');
+      expectMatchesShadowCss(
+        '@supports (display: flex) { @font-face { :host ::ng-deep font-family{} } }',
+      );
+      expectMatchesShadowCss('@page { :host ::ng-deep @top-left { content:"Hamlet";}}');
+      expectMatchesShadowCss('@page { div {} }');
+    });
+
     it('should match ShadowCss output for :host-context without a valid argument', () => {
       expectMatchesShadowCss(':host-context .inner {}');
       expectMatchesShadowCss(':host-context() .inner {}');
