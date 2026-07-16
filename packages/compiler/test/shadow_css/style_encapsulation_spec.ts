@@ -77,6 +77,40 @@ describe('style encapsulation (postcss)', () => {
       ).toEqualCss('@media screen and (max-width: 800px) {div[contenta] {font-size: 50px;}}');
     });
 
+    describe('comments', () => {
+      // Comments should be kept in the same position as otherwise inline
+      // sourcemaps break due to shift in lines. These mirror the ShadowCss
+      // comment tests and intentionally compare exact text.
+      it('should remove inline comments without adding extra lines', () => {
+        expect(shimPostcss('/* b {} */ b {}', 'contenta')).toBe(' b[contenta] {}');
+      });
+
+      it('should preserve internal newlines from multiline comments', () => {
+        expect(shimPostcss('/* b {}\n */ b {}', 'contenta')).toBe('\n b[contenta] {}');
+      });
+
+      it('should remove multiple inline comments without adding extra lines', () => {
+        expect(shimPostcss('/* b {} */ b {} /* a {} */ a {}', 'contenta')).toBe(
+          ' b[contenta] {}  a[contenta] {}',
+        );
+      });
+
+      it('should keep sourceMappingURL comments', () => {
+        expect(shimPostcss('b {} /*# sourceMappingURL=data:x */', 'contenta')).toBe(
+          'b[contenta] {} /*# sourceMappingURL=data:x */',
+        );
+        expect(shimPostcss('b {}/* #sourceMappingURL=data:x */', 'contenta')).toBe(
+          'b[contenta] {}/* #sourceMappingURL=data:x */',
+        );
+      });
+
+      it('should handle adjacent comments', () => {
+        expect(shimPostcss('/* comment 1 */ /* comment 2 */ b {}', 'contenta')).toBe(
+          '  b[contenta] {}',
+        );
+      });
+    });
+
     it('should match ShadowCss output for basic cases', () => {
       expectMatchesShadowCss('one {color: red;}two {color: red;}');
       expectMatchesShadowCss('one, two {color: red;}');

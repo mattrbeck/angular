@@ -22,9 +22,13 @@ export function shim(css: string, contentAttr: string, hostAttr: string = '') {
  * the ShadowCss.shimCssText() API used by `shim()`.
  */
 export function shimPostcss(css: string, contentAttr: string, hostAttr: string = '') {
-  return postcss([
-    styleEncapsulation({content: contentAttr, host: hostAttr, isAngular: true}),
-  ]).process(css, {from: undefined}).css;
+  return (
+    postcss([styleEncapsulation({content: contentAttr, host: hostAttr, isAngular: true})])
+      // `prev: false` prevents postcss from consuming (and crashing on)
+      // sourceMappingURL comments in the input; `annotation: false` prevents it
+      // from appending its own sourcemap annotation.
+      .process(css, {from: undefined, map: {prev: false, annotation: false}}).css
+  );
 }
 
 const shadowCssMatchers: jasmine.CustomMatcherFactories = {

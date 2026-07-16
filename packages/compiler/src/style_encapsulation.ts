@@ -252,9 +252,13 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
         }
       });
 
+      const comments: Comment[] = [];
       root.walkComments((comment: Comment) => {
-        comment.remove();
+        comments.push(comment);
       });
+      for (const comment of comments) {
+        removeComment(comment, isAngular);
+      }
       root.walkRules((rule: Rule) => {
         const parent = rule.parent;
         if (parent?.type === 'atrule' && atRulesToSkip.has(parent.name)) {
@@ -282,6 +286,43 @@ const plugin: PluginCreator<StyleEncapsulationOptions> = (opts = {}) => {
 };
 plugin.postcss = true;
 export default plugin;
+
+/** Matches comments carrying sourcemap information, e.g. `/*# sourceMappingURL=...`. */
+const sourceMapCommentRe = /^\/\*\s*#\s*source(Mapping)?URL=/;
+
+/**
+ * Removes a comment from the stylesheet.
+ *
+ * In Angular mode, comments carrying sourcemap information are kept, and the
+ * newlines of removed comments are preserved (transferred to the following
+ * node) so that removal does not shift line numbers, which would break
+ * component sourcemaps.
+ */
+function removeComment(comment: Comment, isAngular: boolean): void {
+  if (isAngular) {
+    // Reconstruct the comment as written, excluding any preceding whitespace
+    // captured in raws.before.
+    const text = `/*${comment.raws.left ?? ''}${comment.text}${comment.raws.right ?? ''}*/`;
+    if (sourceMapCommentRe.test(text)) {
+      return;
+    }
+    const newlines = text.match(/\r?\n/g)?.join('') ?? '';
+    const removedRaws = (comment.raws.before ?? '') + newlines;
+    const next = comment.next();
+    const parent = comment.parent;
+    const nextBefore = next?.raws.before ?? '';
+    // Note: raws are restored after removal since Root.removeChild() rewrites
+    // the next node's raws.before when the first child is removed.
+    comment.remove();
+    if (next) {
+      next.raws.before = removedRaws + nextBefore;
+    } else if (parent) {
+      parent.raws.after = removedRaws + (parent.raws.after ?? '');
+    }
+    return;
+  }
+  comment.remove();
+}
 
 /** Helper type to unwrap the child type of Container. */
 type UnwrapContainerChild<T> = T extends Container<infer Value, infer Child> ? Child : never;
