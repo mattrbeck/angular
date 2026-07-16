@@ -1,3 +1,20 @@
+/**
+ * Dependency and bundle-size cost
+ * -------------------------------
+ * This module (unlike shadow_css.ts) depends on postcss and
+ * postcss-selector-parser, which matters because @angular/compiler also runs
+ * as the JIT compiler in the browser and otherwise has no runtime
+ * dependencies. Measured with `esbuild --bundle --minify` (postcss 8.5.16,
+ * postcss-selector-parser 7.1.4, 2026-07):
+ *
+ * - this plugin + postcss + postcss-selector-parser: ~123 KB minified (~35 KB gzip)
+ * - shadow_css.ts alone:                              ~9 KB minified (~3.8 KB gzip)
+ * - net cost over ShadowCss:                        ~114 KB minified (~31 KB gzip)
+ * - optional postcss-safe-parser (error recovery):   ~2.4 KB minified extra
+ *
+ * Transitive npm dependencies added: postcss (nanoid, picocolors,
+ * source-map-js) and postcss-selector-parser (cssesc, util-deprecate).
+ */
 import type {
   AtRule,
   Comment,
