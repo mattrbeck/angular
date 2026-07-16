@@ -17,22 +17,6 @@ export type StyleEncapsulationShim = (
 ) => string;
 
 /**
- * Marker comment that opts a stylesheet into the postcss-based style
- * encapsulation instead of ShadowCss, enabling progressive per-component
- * (per-stylesheet) adoption without any public API changes.
- *
- * The `/*!` form survives CSS preprocessors and minifiers that strip regular
- * comments. The marker itself is removed from the emitted styles (it is
- * handled like any other non-sourcemap comment).
- */
-const POSTCSS_ENCAPSULATION_MARKER = /\/\*!\s*use-postcss-encapsulation\s*\*\//;
-
-/** Whether the stylesheet opts into the postcss-based style encapsulation. */
-export function usesPostcssEncapsulation(cssText: string): boolean {
-  return POSTCSS_ENCAPSULATION_MARKER.test(cssText);
-}
-
-/**
  * The registered implementation, if any.
  *
  * Note: the implementation is registered (as a side effect of loading
@@ -56,8 +40,8 @@ export function setPostcssStyleEncapsulation(shim: StyleEncapsulationShim | null
 export function getPostcssStyleEncapsulation(): StyleEncapsulationShim {
   if (postcssStyleEncapsulation === null) {
     throw new Error(
-      'A stylesheet opted into postcss-based style encapsulation via the ' +
-        '"/*! use-postcss-encapsulation */" marker, but no implementation is loaded. ' +
+      'A component opted into postcss-based style encapsulation via ' +
+        '`ViewEncapsulation.Emulated2`, but no implementation is loaded. ' +
         "Load '@angular/compiler/src/style_encapsulation_shim' before compiling components.",
     );
   }

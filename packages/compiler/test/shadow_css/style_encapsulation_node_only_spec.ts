@@ -6,9 +6,10 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import {ViewEncapsulation} from '../../src/core';
 import {encapsulateStyle} from '../../src/render3/view/compiler';
 import {setPostcssStyleEncapsulation} from '../../src/style_encapsulation_registry';
-import {shimStyleEncapsulation, usesPostcssEncapsulation} from '../../src/style_encapsulation_shim';
+import {shimStyleEncapsulation} from '../../src/style_encapsulation_shim';
 import {shimPostcss} from './node_only_utils';
 import {shim} from './utils';
 
@@ -264,41 +265,35 @@ describe('style encapsulation (postcss)', () => {
       expectMatchesShadowCss('div:where(:host-context(backdrop)) :host {}');
     });
 
-    describe('per-stylesheet opt-in marker', () => {
-      it('should detect the marker comment', () => {
-        expect(usesPostcssEncapsulation('/*! use-postcss-encapsulation */ div {}')).toBe(true);
-        expect(usesPostcssEncapsulation('/*!use-postcss-encapsulation*/ div {}')).toBe(true);
-        expect(usesPostcssEncapsulation('div {} /*! use-postcss-encapsulation */')).toBe(true);
-        expect(usesPostcssEncapsulation('div {}')).toBe(false);
-        expect(usesPostcssEncapsulation('/* use-postcss-encapsulation */ div {}')).toBe(false);
-      });
-
-      it('should route marked stylesheets through the postcss encapsulation', () => {
-        // The marker is removed from the output like any other comment.
-        expect(encapsulateStyle('/*! use-postcss-encapsulation */ :host(.foo) {}', 'comp1')).toBe(
-          ' .foo[_nghost-comp1] {}',
+    describe('ViewEncapsulation.Emulated2', () => {
+      it('should route Emulated2 stylesheets through the postcss encapsulation', () => {
+        expect(encapsulateStyle(':host(.foo) {}', 'comp1', ViewEncapsulation.Emulated2)).toBe(
+          '.foo[_nghost-comp1] {}',
         );
-        // Unmarked stylesheets keep using ShadowCss.
+        // Emulated (the default) keeps using ShadowCss.
         expect(encapsulateStyle(':host(.foo) {}', 'comp1')).toBe('.foo[_nghost-comp1] {}');
+        expect(encapsulateStyle(':host(.foo) {}', 'comp1', ViewEncapsulation.Emulated)).toBe(
+          '.foo[_nghost-comp1] {}',
+        );
       });
 
-      it('should produce equivalent output for marked and unmarked stylesheets', () => {
+      it('should produce equivalent output for Emulated and Emulated2', () => {
         const css = ':host(.foo) .bar {} @media (min-width: 100px) { div { color: red; } }';
-        expect(encapsulateStyle(`/*! use-postcss-encapsulation */ ${css}`, 'c1')).toEqualCss(
-          encapsulateStyle(css, 'c1'),
+        expect(encapsulateStyle(css, 'c1', ViewEncapsulation.Emulated2)).toEqualCss(
+          encapsulateStyle(css, 'c1', ViewEncapsulation.Emulated),
         );
       });
 
       it('should throw a helpful error when the implementation is not loaded', () => {
         // The compiler references the implementation through a registry so
         // that its module graph (and browser bundles of it) don't depend on
-        // postcss; marked stylesheets require the implementation module to
+        // postcss; Emulated2 stylesheets require the implementation module to
         // have been loaded.
         setPostcssStyleEncapsulation(null);
         try {
-          expect(() =>
-            encapsulateStyle('/*! use-postcss-encapsulation */ div {}', 'c1'),
-          ).toThrowError(/no implementation is loaded/);
+          expect(() => encapsulateStyle('div {}', 'c1', ViewEncapsulation.Emulated2)).toThrowError(
+            /no implementation is loaded/,
+          );
         } finally {
           setPostcssStyleEncapsulation(shimStyleEncapsulation);
         }

@@ -157,13 +157,21 @@ Asserted in `style_encapsulation_spec.ts` ("known divergences" block):
 
 ## Adoption mechanism
 
-Add `/*! use-postcss-encapsulation */` anywhere in a component stylesheet.
-Detection and routing happen in `compileStyles()`/`encapsulateStyle()`
-(`render3/view/compiler.ts`); the marker is removed from emitted styles like
-any other comment (newlines preserved). No public API changes; the runtime
-(`ViewEncapsulation.Emulated`, attribute application) is untouched. Removal
-at the end of the migration is a comment-strip codemod plus deleting the
-routing branch.
+Components opt in per component with `encapsulation:
+ViewEncapsulation.Emulated2` (experimental, value `5`). Routing happens in
+`compileStyles()`/`encapsulateStyle()` (`render3/view/compiler.ts`). At
+runtime `Emulated2` behaves exactly like `Emulated` (same scoping
+attributes; `EmulatedEncapsulationDomRenderer2` handles both), only the
+compile-time shimming differs. Migration completion is a codemod flipping
+`Emulated2` back to `Emulated` (or making it the `Emulated` behavior) plus
+deleting the routing branch.
+
+An earlier iteration used a `/*! use-postcss-encapsulation */` marker
+comment in the stylesheet to avoid public API changes, but build tooling may
+strip comments before the compiler sees styles, making the comment an
+unreliable signal; the enum is authoritative. The `ViewEncapsulation` enum
+is mirrored in four places that must stay in sync: `core/src/metadata/view.ts`,
+`compiler/src/core.ts`, and the two `compiler_facade_interface.ts` copies.
 
 The compiler references the implementation through a postcss-free registry
 (`style_encapsulation_registry.ts`); loading

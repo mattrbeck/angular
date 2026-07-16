@@ -12,8 +12,6 @@ import safeParser from 'postcss-safe-parser';
 import styleEncapsulation from './style_encapsulation';
 import {setPostcssStyleEncapsulation} from './style_encapsulation_registry';
 
-export {usesPostcssEncapsulation} from './style_encapsulation_registry';
-
 /**
  * Shims the given css with the postcss-based style encapsulation, mirroring
  * the `ShadowCss.shimCssText()` API.

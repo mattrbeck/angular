@@ -230,6 +230,9 @@ export class DomRendererFactory2 implements RendererFactory2, OnDestroy {
 
       switch (type.encapsulation) {
         case ViewEncapsulation.Emulated:
+        // Emulated2 styles are shimmed differently at compile time, but the
+        // runtime behavior is identical to Emulated.
+        case ViewEncapsulation.Emulated2:
           renderer = new EmulatedEncapsulationDomRenderer2(
             eventManager,
             sharedStylesHost,

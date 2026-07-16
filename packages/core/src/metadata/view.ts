@@ -52,4 +52,14 @@ export enum ViewEncapsulation {
    * @experimental 21.0
    */
   ExperimentalIsolatedShadowDom = 4,
+
+  /**
+   * Same emulated encapsulation behavior as `Emulated` (the component's host element and
+   * template elements receive scoping attributes that are applied to the component's CSS
+   * selectors), but the styles are rewritten by a new PostCSS-based implementation instead
+   * of `ShadowCss`.
+   *
+   * @experimental 22.1
+   */
+  Emulated2 = 5,
 }

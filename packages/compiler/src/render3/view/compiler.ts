@@ -11,10 +11,7 @@ import * as core from '../../core';
 import * as o from '../../output/output_ast';
 import {ParseError, ParseSourceSpan} from '../../parse_util';
 import {namespaceCssVariables, ShadowCss} from '../../shadow_css';
-import {
-  getPostcssStyleEncapsulation,
-  usesPostcssEncapsulation,
-} from '../../style_encapsulation_registry';
+import {getPostcssStyleEncapsulation} from '../../style_encapsulation_registry';
 import {CompilationJobKind, TemplateCompilationMode} from '../../template/pipeline/src/compilation';
 import {emitHostBindingFunction, emitTemplateFn, transform} from '../../template/pipeline/src/emit';
 import {ingestComponent, ingestHostBinding} from '../../template/pipeline/src/ingest';
@@ -274,10 +271,14 @@ export function compileComponentFromMetadata(
   // e.g. `styles: [str1, str2]`
   if (meta.styles && meta.styles.length) {
     const namespacedStyles = meta.styles.map((s) => namespaceCssVariables(s));
-    const styleValues =
-      meta.encapsulation == core.ViewEncapsulation.Emulated
-        ? compileStyles(namespacedStyles, CONTENT_ATTR, HOST_ATTR)
-        : namespacedStyles;
+    const styleValues = isEmulatedEncapsulation(meta.encapsulation)
+      ? compileStyles(
+          namespacedStyles,
+          CONTENT_ATTR,
+          HOST_ATTR,
+          meta.encapsulation === core.ViewEncapsulation.Emulated2,
+        )
+      : namespacedStyles;
     const styleNodes = styleValues.reduce((result, style) => {
       if (style.trim().length > 0) {
         result.push(constantPool.getConstLiteral(o.literal(style)));
@@ -291,7 +292,7 @@ export function compileComponentFromMetadata(
     }
   }
 
-  if (!hasStyles && meta.encapsulation === core.ViewEncapsulation.Emulated) {
+  if (!hasStyles && isEmulatedEncapsulation(meta.encapsulation)) {
     // If there is no style, don't generate css selectors on elements
     meta.encapsulation = core.ViewEncapsulation.None;
   }
@@ -629,34 +630,56 @@ function validateNoEventBindings(
   }
 }
 
-function compileStyles(styles: string[], selector: string, hostSelector: string): string[] {
+/** Whether the encapsulation mode requires styles to be shimmed at compile time. */
+function isEmulatedEncapsulation(encapsulation: core.ViewEncapsulation): boolean {
+  return (
+    encapsulation === core.ViewEncapsulation.Emulated ||
+    encapsulation === core.ViewEncapsulation.Emulated2
+  );
+}
+
+function compileStyles(
+  styles: string[],
+  selector: string,
+  hostSelector: string,
+  usePostcssEncapsulation: boolean,
+): string[] {
+  // `ViewEncapsulation.Emulated2` uses the postcss-based encapsulation
+  // implementation instead of ShadowCss, allowing progressive adoption.
+  if (usePostcssEncapsulation) {
+    const shimStyleEncapsulation = getPostcssStyleEncapsulation();
+    return styles.map((style) => shimStyleEncapsulation(style, selector, hostSelector));
+  }
   const shadowCss = new ShadowCss();
   return styles.map((style) => {
-    // Stylesheets carrying the `/*! use-postcss-encapsulation */` marker opt
-    // into the postcss-based encapsulation, allowing progressive adoption.
-    return usesPostcssEncapsulation(style)
-      ? getPostcssStyleEncapsulation()(style, selector, hostSelector)
-      : shadowCss!.shimCssText(style, selector, hostSelector);
+    return shadowCss!.shimCssText(style, selector, hostSelector);
   });
 }
 
 /**
  * Encapsulates a CSS stylesheet with emulated view encapsulation.
  * This allows a stylesheet to be used with an Angular component that
- * is using the `ViewEncapsulation.Emulated` mode.
+ * is using the `ViewEncapsulation.Emulated` or `ViewEncapsulation.Emulated2` mode.
  *
  * @param style The content of a CSS stylesheet.
  * @param componentIdentifier The identifier to use within the CSS rules.
+ * @param encapsulation The emulated encapsulation mode to apply. Defaults to
+ *     `ViewEncapsulation.Emulated` (ShadowCss); `ViewEncapsulation.Emulated2`
+ *     uses the postcss-based implementation.
  * @returns The encapsulated content for the style.
  */
-export function encapsulateStyle(style: string, componentIdentifier?: string): string {
+export function encapsulateStyle(
+  style: string,
+  componentIdentifier?: string,
+  encapsulation: core.ViewEncapsulation = core.ViewEncapsulation.Emulated,
+): string {
   const selector = componentIdentifier
     ? CONTENT_ATTR.replace(COMPONENT_VARIABLE, componentIdentifier)
     : CONTENT_ATTR;
   const hostSelector = componentIdentifier
     ? HOST_ATTR.replace(COMPONENT_VARIABLE, componentIdentifier)
     : HOST_ATTR;
-  if (usesPostcssEncapsulation(style)) {
+  if (encapsulation === core.ViewEncapsulation.Emulated2) {
     return getPostcssStyleEncapsulation()(style, selector, hostSelector);
   }
   const shadowCss = new ShadowCss();

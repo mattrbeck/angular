@@ -24,6 +24,7 @@ export enum ViewEncapsulation {
   None = 2,
   ShadowDom = 3,
   ExperimentalIsolatedShadowDom = 4,
+  Emulated2 = 5,
 }
 
 export enum ChangeDetectionStrategy {

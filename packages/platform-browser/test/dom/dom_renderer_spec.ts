@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 import {ChangeDetectionStrategy} from '@angular/compiler';
-import {Component, Renderer2, ViewEncapsulation} from '@angular/core';
+import {Component, Renderer2, RendererFactory2, ViewEncapsulation} from '@angular/core';
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {isNode} from '@angular/private/testing';
 import {expect} from '@angular/private/testing/matchers';
@@ -338,6 +338,45 @@ describe('DefaultDomRendererV2', () => {
     );
 
     document.head.innerHTML = '';
+  });
+
+  describe('Emulated2 encapsulation', () => {
+    // The styles of `ViewEncapsulation.Emulated2` components are shimmed
+    // differently at compile time, but at runtime the encapsulation behaves
+    // exactly like `Emulated`. This test uses pre-shimmed styles, like a
+    // renderer receives them from a compiled component.
+    it('should behave like Emulated at runtime', () => {
+      const factory = TestBed.inject(RendererFactory2);
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      try {
+        const emulated2Renderer = factory.createRenderer(host, {
+          id: 'c42',
+          encapsulation: ViewEncapsulation.Emulated2,
+          styles: ['.foo[_ngcontent-%COMP%] { color: red; }'],
+          data: {},
+        });
+
+        // The host element receives the emulated host attribute, and created
+        // elements receive the content attribute.
+        const hostAttr = host.getAttributeNames().find((name) => name.startsWith('_nghost-'));
+        expect(hostAttr).toBeDefined();
+        const componentId = hostAttr!.slice('_nghost-'.length);
+        expect(componentId).toContain('c42');
+        const child = emulated2Renderer.createElement('span') as HTMLElement;
+        expect(child.hasAttribute(`_ngcontent-${componentId}`)).toBe(true);
+
+        // The component's styles are applied with `%COMP%` substituted.
+        const styleTexts = Array.from(document.querySelectorAll('style')).map(
+          (style) => style.textContent ?? '',
+        );
+        expect(styleTexts.some((text) => text.includes(`.foo[_ngcontent-${componentId}]`))).toBe(
+          true,
+        );
+      } finally {
+        host.remove();
+      }
+    });
   });
 
   describe('CSS namespacing', () => {

@@ -543,7 +543,8 @@ export function getClosestRElement(
       // (<content> or <slot>) have to be in place as elements are being inserted.
       if (
         encapsulation === ViewEncapsulation.None ||
-        encapsulation === ViewEncapsulation.Emulated
+        encapsulation === ViewEncapsulation.Emulated ||
+        encapsulation === ViewEncapsulation.Emulated2
       ) {
         return null;
       }

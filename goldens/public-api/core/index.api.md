@@ -2120,6 +2120,7 @@ export abstract class ViewContainerRef {
 // @public
 export enum ViewEncapsulation {
     Emulated = 0,
+    Emulated2 = 5,
     ExperimentalIsolatedShadowDom = 4,
     None = 2,
     ShadowDom = 3

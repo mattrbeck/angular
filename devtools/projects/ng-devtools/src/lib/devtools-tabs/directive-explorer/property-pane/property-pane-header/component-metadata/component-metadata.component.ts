@@ -34,6 +34,7 @@ const ANGULAR_VIEW_ENCAPSULATION: {[key in AngularViewEncapsulation]: string} = 
   [AngularViewEncapsulation.None]: 'None',
   [AngularViewEncapsulation.ShadowDom]: 'ShadowDom',
   [AngularViewEncapsulation.ExperimentalIsolatedShadowDom]: 'ExperimentalIsolatedShadowDom',
+  [AngularViewEncapsulation.Emulated2]: 'Emulated2',
 };
 
 const ACX_VIEW_ENCAPSULATION: {[key in AcxViewEncapsulation]: string} = {
