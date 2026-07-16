@@ -13,6 +13,8 @@ ts_project(
         exclude = NODE_ONLY,
     ),
     deps = [
+        "//:node_modules/postcss",
+        "//:node_modules/postcss-selector-parser",
         "//:node_modules/source-map",
         "//packages/common",
         "//packages/compiler",

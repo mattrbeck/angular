@@ -7,6 +7,7 @@
  */
 
 import {ShadowCss} from '../../src/shadow_css';
+import {canonicalizeCss} from './semantic_css';
 
 export function shim(css: string, contentAttr: string, hostAttr: string = '') {
   const shadowCss = new ShadowCss();
@@ -17,9 +18,22 @@ const shadowCssMatchers: jasmine.CustomMatcherFactories = {
   toEqualCss: function (): jasmine.CustomMatcher {
     return {
       compare: function (actual: string, expected: string): jasmine.CustomMatcherResult {
-        const actualCss = extractCssContent(actual);
-        const expectedCss = extractCssContent(expected);
-        const passes = actualCss === expectedCss;
+        // Prefer a semantic comparison so that equivalent output that differs
+        // only syntactically (e.g. `.foo[hosta]` vs `[hosta].foo`) is treated
+        // as equal. Fall back to a whitespace-insensitive textual comparison
+        // when either side is not parseable as standalone CSS (some tests use
+        // intentionally invalid CSS or placeholder markers).
+        let passes: boolean;
+        let actualCss: string;
+        let expectedCss: string;
+        try {
+          actualCss = canonicalizeCss(actual);
+          expectedCss = canonicalizeCss(expected);
+        } catch {
+          actualCss = extractCssContent(actual);
+          expectedCss = extractCssContent(expected);
+        }
+        passes = actualCss === expectedCss;
         return {
           pass: passes,
           message: passes
