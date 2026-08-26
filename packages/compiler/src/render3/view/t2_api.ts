@@ -326,7 +326,7 @@ export interface BoundTarget<DirectiveT extends DirectiveMeta> {
   /**
    * Gets the list of `@defer` blocks enclosing a given pipe, ordered from outermost to innermost.
    */
-  getDeferBlocksOfPipe(ast: BindingPipe): DeferredBlock[];
+  getDeferBlocksOfPipe(ast: AST): DeferredBlock[];
 
   /**
    * Checks whether a component/directive that was referenced directly in the template exists.

@@ -200,7 +200,7 @@ export class R3TargetBinder<DirectiveT extends DirectiveMeta> implements TargetB
     const usedPipes = new Set<string>();
     const eagerPipes = new Set<string>();
     const deferBlocks: DeferBlockScopes = [];
-    const pipes = new Map<BindingPipe, DeferredBlock[]>();
+    const pipes = new Map<AST, DeferredBlock[]>();
     const conflictingHostDirectiveBindings = new Map<
       DirectiveOwner,
       ConflictingHostDirectiveBinding<DirectiveT>[]
@@ -994,7 +994,7 @@ class TemplateBinder extends CombinedRecursiveAstVisitor {
     private scope: Scope,
     private rootNode: ScopedNode | null,
     private level: number,
-    private pipes: Map<BindingPipe, DeferredBlock[]>,
+    private pipes: Map<AST, DeferredBlock[]>,
   ) {
     super();
   }
@@ -1020,7 +1020,7 @@ class TemplateBinder extends CombinedRecursiveAstVisitor {
     usedPipes: Set<string>,
     eagerPipes: Set<string>,
     deferBlocks: DeferBlockScopes,
-    pipes: Map<BindingPipe, DeferredBlock[]>,
+    pipes: Map<AST, DeferredBlock[]>,
   ): void {
     const template = nodeOrNodes instanceof Template ? nodeOrNodes : null;
     // The top-level template has nesting level 0.
@@ -1209,7 +1209,7 @@ class TemplateBinder extends CombinedRecursiveAstVisitor {
         if (!this.scope.isDeferred) {
           this.eagerPipes.add(name);
         }
-        this.pipes.set(ast as unknown as BindingPipe, this.scope.getEnclosingDeferBlocks());
+        this.pipes.set(ast, this.scope.getEnclosingDeferBlocks());
       }
     }
   }
@@ -1287,7 +1287,7 @@ class R3BoundTarget<DirectiveT extends DirectiveMeta> implements BoundTarget<Dir
     private usedPipes: Set<string>,
     private eagerPipes: Set<string>,
     rawDeferred: DeferBlockScopes,
-    private pipes: Map<BindingPipe, DeferredBlock[]>,
+    private pipes: Map<AST, DeferredBlock[]>,
     private conflictingHostDirectiveBindings: Map<
       DirectiveOwner,
       ConflictingHostDirectiveBinding<DirectiveT>[]
@@ -1358,25 +1358,20 @@ class R3BoundTarget<DirectiveT extends DirectiveMeta> implements BoundTarget<Dir
     // Only triggers that refer to DOM nodes can be resolved.
     if (
       !(trigger instanceof InteractionDeferredTrigger) &&
-      !(trigger instanceof ViewportDeferredTrigger) &&
-      !(trigger instanceof HoverDeferredTrigger)
+      !(trigger instanceof HoverDeferredTrigger) &&
+      !(trigger instanceof ViewportDeferredTrigger)
     ) {
       return null;
     }
 
     const name = trigger.reference;
 
+    // If the trigger has no name, it refers to the block's placeholder.
     if (name === null) {
       let target: Element | null = null;
 
       if (block.placeholder !== null) {
         for (const child of block.placeholder.children) {
-          // Skip over comment nodes. Currently by default the template parser doesn't capture
-          // comments, but we have a safeguard here just in case since it can be enabled.
-          if (child instanceof Comment) {
-            continue;
-          }
-
           // We can only infer the trigger if there's one root element node. Any other
           // nodes at the root make it so that we can't infer the trigger anymore.
           if (target !== null) {
@@ -1447,7 +1442,7 @@ class R3BoundTarget<DirectiveT extends DirectiveMeta> implements BoundTarget<Dir
     return blocks;
   }
 
-  getDeferBlocksOfPipe(ast: BindingPipe): DeferredBlock[] {
+  getDeferBlocksOfPipe(ast: AST): DeferredBlock[] {
     return this.pipes.get(ast) ?? [];
   }
 

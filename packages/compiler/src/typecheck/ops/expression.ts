@@ -20,6 +20,7 @@ import {
 import {LetDeclaration} from '../../render3/r3_ast';
 import {Identifiers as R3Identifiers} from '../../render3/r3_identifiers';
 import {TemplateEntity} from '../../render3/view/t2_api';
+import {TcbPipeMetadata} from '../api';
 import {astToTcbExpr} from '../expression';
 import {TcbOp} from './base';
 import {TcbExpr} from './codegen';
@@ -183,39 +184,9 @@ export class TcbExpressionTranslator {
       if (pipeMeta === null) {
         // No pipe by that name exists in scope. Record this as an error.
         this.tcb.oobRecorder.missingPipe(this.tcb.id, ast, this.tcb.hostIsStandalone);
-
-        // Use an 'any' value to at least allow the rest of the expression to be checked.
         pipe = new TcbExpr('(0 as any)');
-      } else if (pipeMeta.isExplicitlyDeferred) {
-        const enclosingBlocks = this.tcb.boundTarget.getDeferBlocksOfPipe(ast);
-        const isDeferred = enclosingBlocks.length > 0;
-        if (!isDeferred) {
-          this.tcb.oobRecorder.deferredPipeUsedEagerly(this.tcb.id, ast, null, null);
-          pipe = new TcbExpr('(0 as any)');
-        } else if (pipeMeta.deferredBlocks != null) {
-          const isAllowedInBlock = enclosingBlocks.some(
-            (b) => b.definedName !== null && pipeMeta.deferredBlocks!.has(b.definedName),
-          );
-          if (!isAllowedInBlock) {
-            const currentBlockName =
-              enclosingBlocks[enclosingBlocks.length - 1].definedName ?? 'unnamed';
-            const declaredBlocks = Array.from(pipeMeta.deferredBlocks);
-            this.tcb.oobRecorder.deferredPipeUsedEagerly(
-              this.tcb.id,
-              ast,
-              currentBlockName,
-              declaredBlocks,
-            );
-            pipe = new TcbExpr('(0 as any)');
-          } else {
-            pipe = this.tcb.env.pipeInst(pipeMeta);
-          }
-        } else {
-          pipe = this.tcb.env.pipeInst(pipeMeta);
-        }
       } else {
-        // Use a variable declared as the pipe's type.
-        pipe = this.tcb.env.pipeInst(pipeMeta);
+        pipe = this.resolvePipeInstance(ast, pipeMeta);
       }
       const args = ast.args.map((arg) => this.translate(arg).print());
       let methodAccess = new TcbExpr(`${pipe.print()}.transform`).addParseSpanInfo(ast.nameSpan);
@@ -266,38 +237,7 @@ export class TcbExpressionTranslator {
       ) {
         const pipeMeta = this.tcb.getPipeByName(ast.receiver.name);
         if (pipeMeta !== null) {
-          let pipe: TcbExpr;
-          if (pipeMeta.isExplicitlyDeferred) {
-            const enclosingBlocks = this.tcb.boundTarget.getDeferBlocksOfPipe(ast as any);
-            const isDeferred = enclosingBlocks.length > 0;
-            if (!isDeferred) {
-              this.tcb.oobRecorder.deferredPipeUsedEagerly(this.tcb.id, ast as any, null, null);
-              pipe = new TcbExpr('(0 as any)');
-            } else if (pipeMeta.deferredBlocks != null) {
-              const isAllowedInBlock = enclosingBlocks.some(
-                (b) => b.definedName !== null && pipeMeta.deferredBlocks!.has(b.definedName),
-              );
-              if (!isAllowedInBlock) {
-                const currentBlockName =
-                  enclosingBlocks[enclosingBlocks.length - 1].definedName ?? 'unnamed';
-                const declaredBlocks = Array.from(pipeMeta.deferredBlocks);
-                this.tcb.oobRecorder.deferredPipeUsedEagerly(
-                  this.tcb.id,
-                  ast as any,
-                  currentBlockName,
-                  declaredBlocks,
-                );
-                pipe = new TcbExpr('(0 as any)');
-              } else {
-                pipe = this.tcb.env.pipeInst(pipeMeta);
-              }
-            } else {
-              pipe = this.tcb.env.pipeInst(pipeMeta);
-            }
-          } else {
-            pipe = this.tcb.env.pipeInst(pipeMeta);
-          }
-
+          const pipe = this.resolvePipeInstance(ast, pipeMeta);
           const args = ast.args.map((arg) => this.translate(arg).print());
           let methodAccess = new TcbExpr(`${pipe.print()}.transform`).addParseSpanInfo(
             ast.receiver.nameSpan,
@@ -348,5 +288,38 @@ export class TcbExpressionTranslator {
     // are updated before the child views. In practice this means that something like
     // `<ng-template [ngIf]="true">{{value}}</ng-template> @let value = 1;` is valid.
     return (targetStart < astStart && astStart > targetEnd) || !this.scope.isLocal(target);
+  }
+
+  private resolvePipeInstance(ast: AST, pipeMeta: TcbPipeMetadata): TcbExpr {
+    if (!pipeMeta.isExplicitlyDeferred) {
+      return this.tcb.env.pipeInst(pipeMeta);
+    }
+
+    const enclosingBlocks = this.tcb.boundTarget.getDeferBlocksOfPipe(ast);
+    const isDeferred = enclosingBlocks.length > 0;
+    if (!isDeferred) {
+      this.tcb.oobRecorder.deferredPipeUsedEagerly(this.tcb.id, ast as any, null, null);
+      return new TcbExpr('(0 as any)');
+    }
+
+    if (pipeMeta.deferredBlocks != null) {
+      const isAllowedInBlock = enclosingBlocks.some(
+        (b) => b.definedName !== null && pipeMeta.deferredBlocks!.has(b.definedName),
+      );
+      if (!isAllowedInBlock) {
+        const currentBlockName =
+          enclosingBlocks[enclosingBlocks.length - 1].definedName ?? 'unnamed';
+        const declaredBlocks = Array.from(pipeMeta.deferredBlocks as Set<string>);
+        this.tcb.oobRecorder.deferredPipeUsedEagerly(
+          this.tcb.id,
+          ast as any,
+          currentBlockName,
+          declaredBlocks,
+        );
+        return new TcbExpr('(0 as any)');
+      }
+    }
+
+    return this.tcb.env.pipeInst(pipeMeta);
   }
 }
