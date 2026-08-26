@@ -176,6 +176,17 @@ describe('completions', () => {
       expectContain(completions, ts.ScriptElementKind.memberVariableElement, ['title', 'hero']);
     });
 
+    it('should complete in-scope pipes in an interpolation', () => {
+      const {templateFile} = setup('{{so}}', '', SOME_PIPE);
+      templateFile.moveCursorToText('{{so¦}}');
+      const completions = templateFile.getCompletionsAtPosition();
+      expectContain(
+        completions,
+        unsafeCastDisplayInfoKindToScriptElementKind(DisplayInfoKind.PIPE),
+        ['somePipe'],
+      );
+    });
+
     it('should be able to complete an empty interpolation', () => {
       const {templateFile} = setup('{{  }}', `title!: string; hero!52: number;`);
       templateFile.moveCursorToText('{{ ¦ }}');

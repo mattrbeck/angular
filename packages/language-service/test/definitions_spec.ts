@@ -78,6 +78,35 @@ describe('definitions', () => {
     assertFileNames(definitions, ['fake_common.d.ts']);
   });
 
+  it('returns the pipe definitions for pipe function call syntax', () => {
+    const files = {
+      'app.ts': `
+         import {Component, NgModule} from '@angular/core';
+         import {CommonModule} from '@angular/common';
+
+         @Component({
+          templateUrl: 'app.html',
+          standalone: false,
+         })
+         export class AppCmp {}
+       `,
+      'app.html': '{{date("1/1/2020")}}',
+    };
+    const env = LanguageServiceTestEnv.setup();
+    const project = createModuleAndProjectWithDeclarations(env, 'test', files);
+    const template = project.openFile('app.html');
+    project.expectNoSourceDiagnostics();
+    template.moveCursorToText('da¦te');
+
+    const {textSpan, definitions} = getDefinitionsAndAssertBoundSpan(env, template);
+    expect(template.contents.slice(textSpan.start, textSpan.start + textSpan.length)).toEqual(
+      'date',
+    );
+    expect(definitions.length).toBeGreaterThanOrEqual(1);
+    assertTextSpans(definitions, ['transform']);
+    assertFileNames(definitions, ['fake_common.d.ts']);
+  });
+
   it('gets definitions for all inputs when attribute matches more than one', () => {
     const files = {
       'app.ts': `
