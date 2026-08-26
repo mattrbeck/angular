@@ -12,7 +12,6 @@ import {
   Call,
   ImplicitReceiver,
   Interpolation,
-  ParseSourceSpan,
   parseTemplate,
   PropertyRead,
   RecursiveAstVisitor,
@@ -84,22 +83,33 @@ export function migrateTemplatePipeSyntax(
     }
 
     private visitExpression(rootAst: AST, source: string) {
+      const visitedPipes = new Set<BindingPipe>();
+
       class ExpressionVisitor extends RecursiveAstVisitor {
         override visitPipe(ast: BindingPipe, context: any): any {
-          super.visitPipe(ast, context);
+          // If we already visited this pipe as part of an outer pipe transformation, skip
+          if (visitedPipes.has(ast)) {
+            return;
+          }
 
-          // Render pipe invocation to functional syntax
-          const expText = renderAst(ast.exp, source);
-          const argTexts = ast.args.map((a) => renderAst(a, source));
-          const allArgs = [expText, ...argTexts].join(', ');
-          const functionalSyntax = `${ast.name}(${allArgs})`;
+          // Count all nested pipes in this chain
+          function markNestedPipes(curr: AST) {
+            if (curr instanceof BindingPipe) {
+              visitedPipes.add(curr);
+              pipeCount++;
+              markNestedPipes(curr.exp);
+              curr.args.forEach(markNestedPipes);
+            }
+          }
+          markNestedPipes(ast);
+
+          const functionalSyntax = printAstWithPipes(ast, source);
 
           replacements.push({
             start: ast.sourceSpan.start,
             end: ast.sourceSpan.end,
             replacementText: functionalSyntax,
           });
-          pipeCount++;
         }
 
         override visitCall(ast: Call, context: any): any {
@@ -113,7 +123,7 @@ export function migrateTemplatePipeSyntax(
             const methodName = ast.receiver.name;
             if (componentMemberNames.has(methodName) && pipeNames.has(methodName)) {
               // Automatically prefix with `this.` to preserve component method target
-              const fullSource = renderAst(ast, source);
+              const fullSource = source.substring(ast.sourceSpan.start, ast.sourceSpan.end).trim();
               const resolvedCall = `this.${fullSource}`;
 
               replacements.push({
@@ -155,8 +165,14 @@ export function migrateTemplatePipeSyntax(
   };
 }
 
-/** Helper to extract original AST text snippet from template source. */
-function renderAst(ast: AST, source: string): string {
+/** Recursively renders AST expressions, transforming nested pipes into nested function calls. */
+function printAstWithPipes(ast: AST, source: string): string {
+  if (ast instanceof BindingPipe) {
+    const expText = printAstWithPipes(ast.exp, source);
+    const argTexts = ast.args.map((a) => printAstWithPipes(a, source));
+    const allArgs = [expText, ...argTexts].join(', ');
+    return `${ast.name}(${allArgs})`;
+  }
   if (ast.sourceSpan && ast.sourceSpan.start >= 0 && ast.sourceSpan.end <= source.length) {
     return source.substring(ast.sourceSpan.start, ast.sourceSpan.end).trim();
   }
