@@ -431,6 +431,17 @@ describe('quick info', () => {
             'timezone?: string, locale?: string): string | null (+2 overloads)',
         });
       });
+
+      it('should work for pipes with function call syntax', () => {
+        const templateOverride = `<p>The hero's birthday is {{da¦te(birthday, "MM/dd/yy")}}</p>`;
+        expectQuickInfo({
+          templateOverride,
+          expectedSpanText: 'date',
+          expectedDisplayString:
+            '(pipe) DatePipe.transform(value: Date | string | number, format?: string, ' +
+            'timezone?: string, locale?: string): string | null (+2 overloads)',
+        });
+      });
     });
 
     describe('expressions', () => {

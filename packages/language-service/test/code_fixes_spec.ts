@@ -1490,6 +1490,44 @@ describe('code fixes', () => {
         fileName: 'app.ts',
       });
     });
+
+    it('should fix ambiguous pipe function call by adding this.', () => {
+      const files = {
+        'app.ts': `
+         import {Component, Pipe, PipeTransform} from '@angular/core';
+
+         @Pipe({name: 'format'})
+         export class FormatPipe implements PipeTransform {
+           transform(v: any) { return v; }
+         }
+
+         @Component({
+           template: '{{format(title)}}',
+           imports: [FormatPipe],
+         })
+         export class AppComponent {
+           title = 'hello';
+           format(v: string) { return v; }
+         }
+       `,
+      };
+
+      const project = createModuleAndProjectWithDeclarations(env, 'test', files);
+      const appFile = project.openFile('app.ts');
+      const diags = project.getDiagnosticsForFile('app.ts');
+      const ambiguousDiag = diags.find((d) => d.code === 8119);
+      if (ambiguousDiag && ambiguousDiag.start !== undefined) {
+        const codeActions = project.getCodeFixesAtPosition(
+          'app.ts',
+          ambiguousDiag.start,
+          ambiguousDiag.start,
+          [ambiguousDiag.code],
+        );
+        expect(codeActions.length).toBeGreaterThan(0);
+        expect(codeActions[0].description).toBe("Add 'this.' to call component method");
+        expect(codeActions[0].changes[0].textChanges[0].newText).toBe('this.');
+      }
+    });
   });
 });
 

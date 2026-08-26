@@ -11,6 +11,7 @@ import {missingImportMeta} from './fix_missing_import';
 import {missingMemberMeta} from './fix_missing_member';
 import {fixUnusedStandaloneImportsMeta} from './fix_unused_standalone_imports';
 import {fixMissingRequiredInput} from './fix_missing_required_inputs';
+import {fixAmbiguousPipeFunctionCallMeta} from './fix_ambiguous_pipe_function_call';
 import {CodeActionMeta} from './utils';
 
 export const ALL_CODE_FIXES_METAS: CodeActionMeta[] = [
@@ -19,4 +20,5 @@ export const ALL_CODE_FIXES_METAS: CodeActionMeta[] = [
   missingImportMeta,
   fixUnusedStandaloneImportsMeta,
   fixMissingRequiredInput,
+  fixAmbiguousPipeFunctionCallMeta,
 ];

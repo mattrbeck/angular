@@ -7,17 +7,21 @@
  */
 
 import {
+  AbsoluteSourceSpan,
   AST,
   ASTWithName,
   ASTWithSource,
   Binary,
   BindingPipe,
+  Call,
   ClassPropertyMapping,
+  ImplicitReceiver,
   MatchSource,
   ParseSourceSpan,
   PropertyRead,
   R3Identifiers,
   ReferenceTarget,
+  SafeCall,
   SafePropertyRead,
   TemplateEntity,
   TmplAstBoundAttribute,
@@ -83,6 +87,7 @@ export interface SymbolBoundTarget {
   ): SymbolDirectiveMeta | TmplAstElement | TmplAstTemplate | null;
   getReferenceTarget(ref: TmplAstReference): ReferenceTarget<SymbolDirectiveMeta> | null;
   getExpressionTarget(expr: AST): TemplateEntity | null;
+  getUsedPipes(): string[];
 }
 
 /**
@@ -138,7 +143,22 @@ export class SymbolBuilder {
     } else if (node instanceof BindingPipe) {
       symbol = this.getSymbolOfPipe(node);
     } else if (node instanceof AST) {
-      symbol = this.getSymbolOfTemplateExpression(node);
+      if (
+        (node instanceof Call || node instanceof SafeCall) &&
+        (node.receiver instanceof PropertyRead || node.receiver instanceof SafePropertyRead) &&
+        node.receiver.receiver instanceof ImplicitReceiver
+      ) {
+        symbol = this.getSymbolOfPipe(node);
+      } else if (
+        (node instanceof PropertyRead || node instanceof SafePropertyRead) &&
+        node.receiver instanceof ImplicitReceiver
+      ) {
+        symbol = this.getSymbolOfPipe(node);
+      }
+
+      if (symbol === null || symbol === undefined) {
+        symbol = this.getSymbolOfTemplateExpression(node);
+      }
     } else {
       // TODO(atscott): TmplAstContent, TmplAstIcu
     }
@@ -626,17 +646,45 @@ export class SymbolBuilder {
     };
   }
 
-  private getSymbolOfPipe(expression: BindingPipe): PipeSymbol | null {
+  private getSymbolOfPipe(
+    expression: BindingPipe | Call | SafeCall | PropertyRead | SafePropertyRead,
+  ): PipeSymbol | null {
+    let nameSpan: AbsoluteSourceSpan;
+    if (expression instanceof Call || expression instanceof SafeCall) {
+      if (
+        expression.receiver instanceof PropertyRead ||
+        expression.receiver instanceof SafePropertyRead
+      ) {
+        nameSpan = expression.receiver.nameSpan;
+      } else {
+        return null;
+      }
+    } else {
+      nameSpan = expression.nameSpan;
+    }
     const methodAccessId = findFirstMatchingNode(this.typeCheckBlock, {
-      withSpan: expression.nameSpan,
+      withSpan: nameSpan,
       filter: ts.isIdentifier,
     });
-    if (methodAccessId === null || !ts.isPropertyAccessExpression(methodAccessId.parent)) {
+    if (
+      methodAccessId === null ||
+      !ts.isPropertyAccessExpression(methodAccessId.parent) ||
+      methodAccessId.parent.name !== methodAccessId
+    ) {
       return null;
     }
     const methodAccess = methodAccessId.parent;
-
     const pipeVariableNode = methodAccess.expression;
+
+    // For non-BindingPipe expressions, ensure this actually resolved to a pipe transform call,
+    // not a component method or property on `this`.
+    if (
+      !(expression instanceof BindingPipe) &&
+      (pipeVariableNode.kind === ts.SyntaxKind.ThisKeyword ||
+        methodAccess.name.text !== 'transform')
+    ) {
+      return null;
+    }
 
     return {
       tcbLocation: this.getTcbLocationForNode(methodAccess),

@@ -219,6 +219,10 @@ export class BoundTargetAdapter implements SymbolBoundTarget {
   getExpressionTarget(expr: AST) {
     return this.delegate.getExpressionTarget(expr);
   }
+
+  getUsedPipes(): string[] {
+    return this.delegate.getUsedPipes();
+  }
 }
 
 function getTcbLocationForSymbol(symbol: Symbol | BindingSymbol | ClassSymbol): TcbLocation | null {

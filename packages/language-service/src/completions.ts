@@ -615,6 +615,22 @@ export class CompletionBuilder<N extends TmplAstNode | AST> {
       });
     }
 
+    // Include in-scope pipes as expression completions
+    const pipes = this.templateTypeChecker
+      .getPotentialPipes(this.component)
+      .filter((p: PotentialPipe) => p.isInScope);
+    for (const pipe of pipes) {
+      if (pipe.name !== null && !templateContext.has(pipe.name)) {
+        entries.push({
+          name: pipe.name,
+          sortText: pipe.name,
+          replacementSpan,
+          kindModifiers: ts.ScriptElementKindModifier.none,
+          kind: unsafeCastDisplayInfoKindToScriptElementKind(DisplayInfoKind.PIPE),
+        });
+      }
+    }
+
     return {
       entries,
       // Although this completion is "global" in the sense of an Angular expression (there is no
