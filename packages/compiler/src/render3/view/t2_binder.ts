@@ -10,8 +10,10 @@ import {CssSelector, SelectorlessMatcher, SelectorMatcher} from '../../directive
 import {
   AST,
   BindingPipe,
+  Call,
   ImplicitReceiver,
   PropertyRead,
+  SafeCall,
   SafePropertyRead,
 } from '../../expression_parser/ast';
 import {
@@ -1187,6 +1189,34 @@ class TemplateBinder extends CombinedRecursiveAstVisitor {
     }
     this.pipes.set(ast, this.scope.getEnclosingDeferBlocks());
     return super.visitPipe(ast, context);
+  }
+
+  override visitCall(ast: Call, context: any): any {
+    if (ast.receiver instanceof PropertyRead && ast.receiver.receiver instanceof ImplicitReceiver) {
+      const name = ast.receiver.name;
+      if (this.scope.lookup(name) === null) {
+        this.usedPipes.add(name);
+        if (!this.scope.isDeferred) {
+          this.eagerPipes.add(name);
+        }
+        this.pipes.set(ast as unknown as BindingPipe, this.scope.getEnclosingDeferBlocks());
+      }
+    }
+    return super.visitCall(ast, context);
+  }
+
+  override visitSafeCall(ast: SafeCall, context: any): any {
+    if (ast.receiver instanceof PropertyRead && ast.receiver.receiver instanceof ImplicitReceiver) {
+      const name = ast.receiver.name;
+      if (this.scope.lookup(name) === null) {
+        this.usedPipes.add(name);
+        if (!this.scope.isDeferred) {
+          this.eagerPipes.add(name);
+        }
+        this.pipes.set(ast as unknown as BindingPipe, this.scope.getEnclosingDeferBlocks());
+      }
+    }
+    return super.visitSafeCall(ast, context);
   }
 
   // These five types of AST expressions can refer to expression roots, which could be variables

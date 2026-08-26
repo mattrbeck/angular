@@ -26,6 +26,7 @@ import {
   R3DirectiveMetadata,
   R3HostMetadata,
   R3TemplateDependency,
+  R3TemplateDependencyKind,
 } from './api';
 import {ENABLE_TEMPLATE_SOURCE_LOCATIONS} from './config';
 import {createContentQueriesFunction, createViewQueriesFunction} from './query_generation';
@@ -203,6 +204,15 @@ export function compileComponentFromMetadata(
       ? TemplateCompilationMode.DomOnly
       : TemplateCompilationMode.Full;
 
+  const pipeNames = new Set<string>();
+  if (meta.declarations) {
+    for (const decl of meta.declarations) {
+      if (decl.kind === R3TemplateDependencyKind.Pipe && 'name' in decl) {
+        pipeNames.add((decl as any).name);
+      }
+    }
+  }
+
   // First the template is ingested into IR:
   const tpl = ingestComponent(
     meta.name,
@@ -217,6 +227,7 @@ export function compileComponentFromMetadata(
     meta.enableTemplateSourceLocations || ENABLE_TEMPLATE_SOURCE_LOCATIONS,
     meta.legacyOptionalChaining,
     meta.foreignImports,
+    pipeNames,
   );
 
   // Then the IR is transformed to prepare it for code generation.

@@ -259,6 +259,59 @@ export class TcbExpressionTranslator {
         return result;
       }
 
+      // If receiver is on ImplicitReceiver, check if it targets an in-scope pipe.
+      if (
+        ast.receiver.receiver instanceof ImplicitReceiver &&
+        this.tcb.boundTarget.getExpressionTarget(ast) === null
+      ) {
+        const pipeMeta = this.tcb.getPipeByName(ast.receiver.name);
+        if (pipeMeta !== null) {
+          let pipe: TcbExpr;
+          if (pipeMeta.isExplicitlyDeferred) {
+            const enclosingBlocks = this.tcb.boundTarget.getDeferBlocksOfPipe(ast as any);
+            const isDeferred = enclosingBlocks.length > 0;
+            if (!isDeferred) {
+              this.tcb.oobRecorder.deferredPipeUsedEagerly(this.tcb.id, ast as any, null, null);
+              pipe = new TcbExpr('(0 as any)');
+            } else if (pipeMeta.deferredBlocks != null) {
+              const isAllowedInBlock = enclosingBlocks.some(
+                (b) => b.definedName !== null && pipeMeta.deferredBlocks!.has(b.definedName),
+              );
+              if (!isAllowedInBlock) {
+                const currentBlockName =
+                  enclosingBlocks[enclosingBlocks.length - 1].definedName ?? 'unnamed';
+                const declaredBlocks = Array.from(pipeMeta.deferredBlocks);
+                this.tcb.oobRecorder.deferredPipeUsedEagerly(
+                  this.tcb.id,
+                  ast as any,
+                  currentBlockName,
+                  declaredBlocks,
+                );
+                pipe = new TcbExpr('(0 as any)');
+              } else {
+                pipe = this.tcb.env.pipeInst(pipeMeta);
+              }
+            } else {
+              pipe = this.tcb.env.pipeInst(pipeMeta);
+            }
+          } else {
+            pipe = this.tcb.env.pipeInst(pipeMeta);
+          }
+
+          const args = ast.args.map((arg) => this.translate(arg).print());
+          let methodAccess = new TcbExpr(`${pipe.print()}.transform`).addParseSpanInfo(
+            ast.receiver.nameSpan,
+          );
+
+          if (!this.tcb.env.config.checkTypeOfPipes) {
+            methodAccess = new TcbExpr(`(${methodAccess.print()} as any)`);
+          }
+
+          const result = new TcbExpr(`${methodAccess.print()}(${args.join(', ')})`);
+          return result.addParseSpanInfo(ast.sourceSpan);
+        }
+      }
+
       // Attempt to resolve a bound target for the method, and generate the method call if a target
       // could be resolved. If no target is available, then the method is referencing the top-level
       // component context, in which case `null` is returned to let the `ImplicitReceiver` being

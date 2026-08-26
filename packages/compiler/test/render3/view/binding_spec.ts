@@ -1059,6 +1059,34 @@ describe('t2 binding', () => {
       const res = binder.bind({template: template.nodes});
       expect(res.getUsedPipes()).toEqual(['number', 'date']);
     });
+
+    it('should record pipes invoked with function-call syntax in interpolations', () => {
+      const template = parseTemplate('{{date(value)}}', '', {});
+      const binder = new R3TargetBinder(makeSelectorMatcher());
+      const res = binder.bind({template: template.nodes});
+      expect(res.getUsedPipes()).toEqual(['date']);
+    });
+
+    it('should record pipes invoked with function-call syntax in bound attributes', () => {
+      const template = parseTemplate('<person [age]="number(age)"></person>', '', {});
+      const binder = new R3TargetBinder(makeSelectorMatcher());
+      const res = binder.bind({template: template.nodes});
+      expect(res.getUsedPipes()).toEqual(['number']);
+    });
+
+    it('should record nested and chained pipes invoked with function-call syntax', () => {
+      const template = parseTemplate('{{uppercase(slice(trim(name), 0, 5))}}', '', {});
+      const binder = new R3TargetBinder(makeSelectorMatcher());
+      const res = binder.bind({template: template.nodes});
+      expect(res.getUsedPipes()).toEqual(['uppercase', 'slice', 'trim']);
+    });
+
+    it('should record multi-argument pipe function calls', () => {
+      const template = parseTemplate('{{date(birthday, "yyyy-MM-dd", "UTC")}}', '', {});
+      const binder = new R3TargetBinder(makeSelectorMatcher());
+      const res = binder.bind({template: template.nodes});
+      expect(res.getUsedPipes()).toEqual(['date']);
+    });
   });
 
   describe('selectorless', () => {

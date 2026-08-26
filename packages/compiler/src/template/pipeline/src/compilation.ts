@@ -91,6 +91,7 @@ export class ComponentCompilationJob extends CompilationJob {
     readonly enableDebugLocations: boolean,
     legacyOptionalChaining: boolean,
     readonly foreignImports: R3ForeignComponentMetadata[] | null,
+    readonly pipes: Set<string> | null = null,
   ) {
     super(componentName, pool, mode, legacyOptionalChaining);
     this.root = new ViewCompilationUnit(this, this.allocateXrefId(), null);

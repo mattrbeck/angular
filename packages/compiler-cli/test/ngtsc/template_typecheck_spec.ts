@@ -9488,5 +9488,108 @@ suppress
         expect(diags.length).toBe(0);
       });
     });
+
+    describe('pipe function call syntax', () => {
+      it('should type-check pipes invoked via standard function call syntax', () => {
+        env.write(
+          'test.ts',
+          `
+          import {Component, Pipe, PipeTransform} from '@angular/core';
+
+          @Pipe({name: 'prefix'})
+          export class PrefixPipe implements PipeTransform {
+            transform(value: string, prefix: string): string {
+              return prefix + value;
+            }
+          }
+
+          @Component({
+            selector: 'test',
+            template: '<div>{{ prefix(name, "Hello, ") }}</div>',
+            imports: [PrefixPipe],
+          })
+          export class TestCmp {
+            name: string = 'Angular';
+          }
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(0);
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵɵpipe(2, "prefix")');
+        expect(jsContents).toContain('ɵɵpipeBind2(2, 1, ctx.name, "Hello, ")');
+      });
+
+      it('should report type error when pipe function call arguments are invalid', () => {
+        env.write(
+          'test.ts',
+          `
+          import {Component, Pipe, PipeTransform} from '@angular/core';
+
+          @Pipe({name: 'multiply'})
+          export class MultiplyPipe implements PipeTransform {
+            transform(value: number, factor: number): number {
+              return value * factor;
+            }
+          }
+
+          @Component({
+            selector: 'test',
+            template: '<div>{{ multiply("not-a-number", 2) }}</div>',
+            imports: [MultiplyPipe],
+          })
+          export class TestCmp {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(1);
+        expect(diags[0].messageText).toContain(
+          `Argument of type 'string' is not assignable to parameter of type 'number'.`,
+        );
+      });
+
+      it('should type-check chained pipe function calls and emit correct bindings', () => {
+        env.write(
+          'test.ts',
+          `
+          import {Component, Pipe, PipeTransform} from '@angular/core';
+
+          @Pipe({name: 'trim'})
+          export class TrimPipe implements PipeTransform {
+            transform(value: string): string {
+              return value.trim();
+            }
+          }
+
+          @Pipe({name: 'uppercase'})
+          export class UppercasePipe implements PipeTransform {
+            transform(value: string): string {
+              return value.toUpperCase();
+            }
+          }
+
+          @Component({
+            selector: 'test',
+            template: '<div>{{ uppercase(trim(name)) }}</div>',
+            imports: [TrimPipe, UppercasePipe],
+          })
+          export class TestCmp {
+            name: string = '  angular  ';
+          }
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(0);
+
+        const jsContents = env.getContents('test.js');
+        expect(jsContents).toContain('ɵɵpipe(2, "trim")');
+        expect(jsContents).toContain('ɵɵpipe(3, "uppercase")');
+        expect(jsContents).toContain('dependencies: [TrimPipe, UppercasePipe]');
+      });
+    });
   });
 });

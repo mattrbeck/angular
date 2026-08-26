@@ -34,4 +34,5 @@ export enum ExtendedTemplateDiagnosticName {
   UNPARENTHESIZED_NULLISH_COALESCING = 'unparenthesizedNullishCoalescing',
   UNINVOKED_FUNCTION_IN_TEXT_INTERPOLATION = 'uninvokedFunctionInTextInterpolation',
   DEFER_TRIGGER_MISCONFIGURATION = 'deferTriggerMisconfiguration',
+  AMBIGUOUS_PIPE_FUNCTION_CALL = 'ambiguousPipeFunctionCall',
 }

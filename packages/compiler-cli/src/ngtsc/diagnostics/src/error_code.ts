@@ -690,6 +690,19 @@ export enum ErrorCode {
   FORBIDDEN_REQUIRED_INITIALIZER_INVOCATION = 8118,
 
   /**
+   * Raised when a function call in a template matches both an in-scope Pipe and a component
+   * class member.
+   *
+   * For example:
+   * ```html
+   * {{ format(value) }}
+   * ```
+   * where `format` is an imported Pipe and `format` is also a method on the component class.
+   * To call the component method, use `this.format(value)`.
+   */
+  AMBIGUOUS_PIPE_FUNCTION_CALL = 8119,
+
+  /**
    * The template type-checking engine would need to generate an inline type check block for a
    * component, but the current type-checking environment doesn't support it.
    */

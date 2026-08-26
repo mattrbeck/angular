@@ -70,6 +70,7 @@ export function ingestComponent(
   enableDebugLocations: boolean,
   legacyOptionalChaining: boolean,
   foreignImports: R3ForeignComponentMetadata[] | null,
+  pipes: Set<string> | null = null,
 ): ComponentCompilationJob {
   const job = new ComponentCompilationJob(
     componentName,
@@ -83,6 +84,7 @@ export function ingestComponent(
     enableDebugLocations,
     legacyOptionalChaining,
     foreignImports,
+    pipes,
   );
   ingestNodes(job.root, template);
   return job;
@@ -1197,6 +1199,16 @@ function convertAst(
   } else if (ast instanceof e.Call) {
     if (ast.receiver instanceof e.ImplicitReceiver) {
       throw new Error(`Unexpected ImplicitReceiver`);
+    } else if (
+      ast.receiver instanceof e.PropertyRead &&
+      ast.receiver.receiver instanceof e.ImplicitReceiver &&
+      job instanceof ComponentCompilationJob &&
+      job.pipes !== null &&
+      job.pipes.has(ast.receiver.name)
+    ) {
+      return new ir.PipeBindingExpr(job.allocateXrefId(), new ir.SlotHandle(), ast.receiver.name, [
+        ...ast.args.map((arg) => convertAst(arg, job, baseSourceSpan)),
+      ]);
     } else {
       return new o.InvokeFunctionExpr(
         convertAst(ast.receiver, job, baseSourceSpan),

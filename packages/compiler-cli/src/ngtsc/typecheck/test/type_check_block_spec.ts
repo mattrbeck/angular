@@ -1458,6 +1458,25 @@ describe('type check blocks', () => {
         expect(block).toContain('((_pipe1.transform as any)(((this).a), ((this).b), ((this).c))');
       });
 
+      it('should check types of pipes invoked with function call syntax when enabled', () => {
+        const block = tcb(`{{test(a, b, c)}}`, PIPES);
+        expect(block).toContain('var _pipe1 = null! as i0.TestPipe;');
+        expect(block).toContain('(_pipe1.transform(((this).a), ((this).b), ((this).c)));');
+      });
+      it('should not check types of pipe function calls when disabled', () => {
+        const DISABLED_CONFIG: TypeCheckingConfig = {...BASE_CONFIG, checkTypeOfPipes: false};
+        const block = tcb(`{{test(a, b, c)}}`, PIPES, DISABLED_CONFIG);
+        expect(block).toContain('var _pipe1 = null! as i0.TestPipe;');
+        expect(block).toContain('((_pipe1.transform as any)(((this).a), ((this).b), ((this).c))');
+      });
+      it('should check chained pipe function calls', () => {
+        const block = tcb(`{{test(test(a, b), c)}}`, PIPES);
+        expect(block).toContain('var _pipe1 = null! as i0.TestPipe;');
+        expect(block).toContain(
+          '(_pipe1.transform(_pipe1.transform(((this).a), ((this).b)), ((this).c)));',
+        );
+      });
+
       it('should preserve type inference without explicitly filling generic arguments', () => {
         const GENERIC_PIPES: TestDeclaration[] = [
           {

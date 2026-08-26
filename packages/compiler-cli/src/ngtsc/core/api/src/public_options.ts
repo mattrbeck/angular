@@ -462,4 +462,9 @@ export interface MiscOptions {
    * another library without option set will not issue error if rendered in orphan way.
    */
   forbidOrphanComponents?: boolean;
+
+  /**
+   * Whether to enable pipe invocation via function call syntax (e.g. `pipeName(value, ...args)`).
+   */
+  experimentalPipeFunctionCalls?: boolean;
 }
