@@ -16,6 +16,7 @@ import {
   Signal,
   Type,
   Resource,
+  Injector,
 } from '@angular/core';
 import {Observable} from 'rxjs';
 export {DefaultExport} from '@angular/core';
@@ -62,12 +63,40 @@ export interface ResourceContext {
    */
   data: Signal<Record<string, any>>;
   /**
-   * The static activated route snapshot for this navigation.
-   * Useful for reading initial static configuration statically without
-   * reacting to future parameter changes on reused routes.
+   * The resources available to this route. This is the same object as `ActivatedRoute.resources`
+   * and its reference is stable for the lifetime of the route.
+   *
+   * When the `resources` function runs, this map holds the resources inherited from parent routes
+   * (following `paramsInheritanceStrategy`, exactly like `data`). Once the function returns, the
+   * route's own resources are added to it.
+   *
    * @developerPreview 22.2
    */
-  snapshot: ActivatedRouteSnapshot;
+  resources: ResourceResult;
+  /**
+   * The context of the parent route, or `null` for the root. The parent's `resources` are fully
+   * set up by the time this route's `resources` function runs, so a resource can depend on one
+   * of them:
+   *
+   * ```ts
+   * team: resource({
+   *   params: ({chain}) => chain(ctx.parent!.resources['user']).teamId,
+   *   loader: ({params: teamId}) => fetchTeam(teamId),
+   * })
+   * ```
+   *
+   * @developerPreview 22.2
+   */
+  parent: ResourceContext | null;
+  /**
+   * The injector that resources of this route are created in. It is destroyed when the route is
+   * deactivated. Pass it explicitly (`resource({injector: ctx.injector, ...})`) when creating a
+   * resource after an `await` in an async `resources` function, where the implicit injection
+   * context is no longer available.
+   *
+   * @developerPreview 22.2
+   */
+  injector: Injector;
 }
 
 /**

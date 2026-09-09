@@ -768,7 +768,10 @@ export class NavigationTransitions {
             return of(t);
           }),
 
-          this.routerResourcesFeature?.setupAndRunResources(abortController.signal) ?? ((t) => t),
+          this.routerResourcesFeature?.setupAndRunResources(
+            abortController.signal,
+            this.paramsInheritanceStrategy,
+          ) ?? ((t) => t),
           switchTap(() => this.afterPreactivation()),
 
           switchMap(() => {

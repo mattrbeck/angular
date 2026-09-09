@@ -18,7 +18,7 @@ import {
 import {BehaviorSubject, Observable, of} from 'rxjs';
 import {map} from 'rxjs/operators';
 
-import {Data, ResourceResult, ResolveData, Route} from './models';
+import {Data, ResourceContext, ResourceResult, ResolveData, Route} from './models';
 import {convertToParamMap, ParamMap, Params, PRIMARY_OUTLET, RouteTitleKey} from './shared';
 import {equalSegments, UrlSegment} from './url_tree';
 import {shallowEqual, shallowEqualArrays} from './utils/collection';
@@ -179,6 +179,10 @@ export class ActivatedRoute {
   resources?: ResourceResult;
   /** @internal */
   _localInjector?: EnvironmentInjector;
+  /** @internal The context passed to this route's `resources` function; created once per route. */
+  _resourceContext?: ResourceContext;
+  /** @internal Resources created by this route's own `resources` function (not inherited). */
+  _ownResources?: ResourceResult;
   /** @internal */
   readonly pending?: WritableSignal<boolean>;
   // Note for framework developers: `paramsSignal`, `queryParamsSignal`, and `dataSignal`

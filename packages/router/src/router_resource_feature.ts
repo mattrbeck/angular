@@ -10,11 +10,12 @@ import {ComponentRef, EffectRef, InjectionToken} from '@angular/core';
 import {OperatorFunction} from 'rxjs';
 import type {NavigationTransition} from './navigation_transition';
 
-import type {ActivatedRoute} from './router_state';
+import type {ActivatedRoute, ParamsInheritanceStrategy} from './router_state';
 
 export interface RouterResourcesFeatureImplementation {
   setupAndRunResources(
     abortSignal: AbortSignal,
+    paramsInheritanceStrategy: ParamsInheritanceStrategy,
   ): OperatorFunction<NavigationTransition, NavigationTransition>;
   createResourceOutletBindingEffects?: (
     componentRef: ComponentRef<unknown>,
