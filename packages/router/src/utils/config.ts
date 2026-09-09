@@ -16,7 +16,7 @@ import {
 } from '@angular/core';
 
 import {RuntimeErrorCode} from '../errors';
-import {Route, Routes} from '../models';
+import {LazyRouteConfig, Route, Routes} from '../models';
 import {ActivatedRouteSnapshot} from '../router_state';
 import {PRIMARY_OUTLET} from '../shared';
 
@@ -85,6 +85,51 @@ export function assertStandalone(fullPath: string, component: Type<unknown> | un
   }
 }
 
+/**
+ * Properties of a `Route` that are used to match the URL. These can never be part of a lazily
+ * loaded configuration because matching has already happened by the time the config is loaded.
+ */
+const STATIC_ONLY_ROUTE_PROPERTIES: ReadonlySet<string> = new Set<keyof Route>([
+  'path',
+  'pathMatch',
+  'matcher',
+  'outlet',
+  'redirectTo',
+  'canMatch',
+  'canLoad',
+  'loadConfig',
+]);
+
+/**
+ * Asserts that the configuration returned from `Route.loadConfig` only contains properties that can
+ * be lazily loaded and does not override anything defined on the static `Route`.
+ */
+export function assertValidLazyRouteConfig(route: Route, loaded: LazyRouteConfig): void {
+  if (loaded === null || typeof loaded !== 'object' || Array.isArray(loaded)) {
+    throw new RuntimeError(
+      RuntimeErrorCode.INVALID_ROUTE_CONFIG,
+      `Invalid configuration of route '${route.path}': loadConfig must resolve to an object, ` +
+        `but got '${String(loaded)}'.`,
+    );
+  }
+  for (const key of Object.keys(loaded)) {
+    if (STATIC_ONLY_ROUTE_PROPERTIES.has(key)) {
+      throw new RuntimeError(
+        RuntimeErrorCode.INVALID_ROUTE_CONFIG,
+        `Invalid configuration of route '${route.path}': '${key}' is used to match the URL and cannot be ` +
+          `lazily loaded with loadConfig. Define it on the route instead.`,
+      );
+    }
+    if ((route as Record<string, unknown>)[key] !== undefined) {
+      throw new RuntimeError(
+        RuntimeErrorCode.INVALID_ROUTE_CONFIG,
+        `Invalid configuration of route '${route.path}': '${key}' is defined both on the route and in ` +
+          `the configuration loaded by loadConfig.`,
+      );
+    }
+  }
+}
+
 function validateNode(route: Route, fullPath: string, requireStandaloneComponents: boolean): void {
   if (typeof ngDevMode === 'undefined' || ngDevMode) {
     if (!route) {
@@ -115,6 +160,7 @@ function validateNode(route: Route, fullPath: string, requireStandaloneComponent
       !route.loadComponent &&
       !route.children &&
       !route.loadChildren &&
+      !route.loadConfig &&
       route.outlet &&
       route.outlet !== PRIMARY_OUTLET
     ) {
@@ -133,6 +179,12 @@ function validateNode(route: Route, fullPath: string, requireStandaloneComponent
       throw new RuntimeError(
         RuntimeErrorCode.INVALID_ROUTE_CONFIG,
         `Invalid configuration of route '${fullPath}': redirectTo and loadChildren cannot be used together`,
+      );
+    }
+    if (route.redirectTo && route.loadConfig) {
+      throw new RuntimeError(
+        RuntimeErrorCode.INVALID_ROUTE_CONFIG,
+        `Invalid configuration of route '${fullPath}': redirectTo and loadConfig cannot be used together`,
       );
     }
     if (route.children && route.loadChildren) {
@@ -175,11 +227,16 @@ function validateNode(route: Route, fullPath: string, requireStandaloneComponent
       !route.component &&
       !route.loadComponent &&
       !route.children &&
-      !route.loadChildren
+      !route.loadChildren &&
+      // A route with `loadConfig` gets these properties once the config is loaded. After loading,
+      // at least one of them must be present.
+      (!route.loadConfig || route._loadedConfig)
     ) {
       throw new RuntimeError(
         RuntimeErrorCode.INVALID_ROUTE_CONFIG,
-        `Invalid configuration of route '${fullPath}'. One of the following must be provided: component, loadComponent, redirectTo, children or loadChildren`,
+        route.loadConfig
+          ? `Invalid configuration of route '${fullPath}'. The configuration loaded by loadConfig must provide one of the following: component, loadComponent, children or loadChildren`
+          : `Invalid configuration of route '${fullPath}'. One of the following must be provided: component, loadComponent, redirectTo, children, loadChildren or loadConfig`,
       );
     }
     if (route.path === void 0 && route.matcher === void 0) {

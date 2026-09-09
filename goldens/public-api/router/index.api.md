@@ -388,10 +388,16 @@ export interface IsActiveMatchOptions {
 }
 
 // @public
+export type LazyRouteConfig = Pick<Route, 'title' | 'component' | 'loadComponent' | 'canActivate' | 'canActivateChild' | 'canDeactivate' | 'data' | 'resolve' | 'resources' | 'children' | 'loadChildren' | 'runGuardsAndResolvers' | 'providers'>;
+
+// @public
 export type LoadChildren = LoadChildrenCallback;
 
 // @public
 export type LoadChildrenCallback = () => Type<any> | NgModuleFactory<any> | Routes | Observable<Type<any> | Routes | DefaultExport<Type<any>> | DefaultExport<Routes>> | Promise<NgModuleFactory<any> | Type<any> | Routes | DefaultExport<Type<any>> | DefaultExport<Routes>>;
+
+// @public
+export type LoadConfigCallback = () => LazyRouteConfig | Observable<LazyRouteConfig | DefaultExport<LazyRouteConfig>> | Promise<LazyRouteConfig | DefaultExport<LazyRouteConfig>>;
 
 // @public
 export function mapToCanActivate(providers: Array<Type<CanActivate>>): CanActivateFn[];
@@ -690,6 +696,7 @@ export interface Route {
     data?: Data;
     loadChildren?: LoadChildren;
     loadComponent?: () => Type<unknown> | Observable<Type<unknown> | DefaultExport<Type<unknown>>> | Promise<Type<unknown> | DefaultExport<Type<unknown>>>;
+    loadConfig?: LoadConfigCallback;
     matcher?: UrlMatcher;
     outlet?: string;
     path?: string;

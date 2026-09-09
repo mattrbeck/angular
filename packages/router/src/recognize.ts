@@ -437,6 +437,16 @@ export class Recognizer {
     }
     // If the route has an injector created from providers, we should start using that.
     injector = route._injector ?? injector;
+    if (route.loadConfig && !route._loadedConfig) {
+      // The route matched and `canMatch` guards passed, so now load the rest of its config.
+      // Once loaded, the route behaves like a static one (it has `component`, `children`, etc.).
+      if (this.abortSignal.aborted) {
+        throw new Error(this.abortSignal.reason);
+      }
+      await this.configLoader.loadConfig(injector, route);
+      // The loaded config may have created a providers injector.
+      injector = route._injector ?? injector;
+    }
     const {routes: childConfig} = await this.getChildConfig(injector, route, segments);
     const childInjector = route._loadedInjector ?? injector;
 

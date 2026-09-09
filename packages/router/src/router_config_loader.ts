@@ -21,9 +21,14 @@ import {
 } from '@angular/core';
 
 import {standardizeConfig} from './components/empty_outlet';
-import {LoadedRouterConfig, Route, Routes} from './models';
+import {LazyRouteConfig, LoadedRouterConfig, Route, Routes} from './models';
 import {wrapIntoPromise} from './utils/collection';
-import {assertStandalone, validateConfig} from './utils/config';
+import {
+  assertStandalone,
+  assertValidLazyRouteConfig,
+  getOrCreateRouteInjectorIfNeeded,
+  validateConfig,
+} from './utils/config';
 
 /**
  * The DI token for a router configuration.
@@ -43,6 +48,7 @@ export const ROUTES = new InjectionToken<Route[][]>(
 export class RouterConfigLoader {
   private componentLoaders = new WeakMap<Route, Promise<Type<unknown>>>();
   private childrenLoaders = new WeakMap<Route, Promise<LoadedRouterConfig>>();
+  private configLoaders = new WeakMap<Route, Promise<void>>();
   onLoadStartListener?: (r: Route) => void;
   onLoadEndListener?: (r: Route) => void;
   private readonly compiler = inject(Compiler);
@@ -76,6 +82,44 @@ export class RouterConfigLoader {
       }
     })();
     this.componentLoaders.set(route, loader);
+    return loader;
+  }
+
+  /**
+   * Executes `route.loadConfig` and merges the result into the `route`.
+   *
+   * After this resolves, the `route` looks exactly like a statically configured route: the lazily
+   * loaded `component`, `children`, guards, resolvers, etc. are all available directly on the
+   * `Route` object and a providers injector is created if the loaded config has `providers`.
+   */
+  loadConfig(injector: EnvironmentInjector, route: Route): Promise<void> {
+    if (this.configLoaders.get(route)) {
+      return this.configLoaders.get(route)!;
+    } else if (route._loadedConfig) {
+      return Promise.resolve();
+    }
+
+    if (this.onLoadStartListener) {
+      this.onLoadStartListener(route);
+    }
+    const loader = (async () => {
+      try {
+        const loaded = await wrapIntoPromise(
+          runInInjectionContext(injector, () => route.loadConfig!()),
+        );
+        const config = await maybeResolveResources(maybeUnwrapDefaultExport(loaded));
+        if (this.onLoadEndListener) {
+          this.onLoadEndListener(route);
+        }
+        mergeLazyRouteConfig(route, config);
+        // The loaded config may have `providers`. Create the route injector now so that it's
+        // available for the rest of the navigation (child matching, guards, resolvers, etc.).
+        getOrCreateRouteInjectorIfNeeded(route, injector);
+      } finally {
+        this.configLoaders.delete(route);
+      }
+    })();
+    this.configLoaders.set(route, loader);
     return loader;
   }
 
@@ -161,6 +205,24 @@ export async function loadChildren(
   (typeof ngDevMode === 'undefined' || ngDevMode) &&
     validateConfig(routes, route.path, requireStandaloneComponents);
   return {routes, injector, factory};
+}
+
+/**
+ * Merges the configuration returned from `route.loadConfig` into the `route` itself.
+ *
+ * The `route` is mutated in place so that its identity is preserved. Route identity matters for
+ * route reuse, `ActivatedRoute.routeConfig` comparisons and the loader caches.
+ */
+function mergeLazyRouteConfig(route: Route, loaded: LazyRouteConfig): void {
+  (typeof ngDevMode === 'undefined' || ngDevMode) && assertValidLazyRouteConfig(route, loaded);
+  // `standardizeConfig` copies the loaded `children` so that the user's objects are not mutated by
+  // the router and adds the empty outlet component for componentless named outlet routes.
+  const merged = standardizeConfig({...route, ...loaded, _loadedConfig: loaded});
+  // Lazily loaded components cannot be declared in an NgModule that the router knows about, so
+  // they must be standalone (same as `loadComponent` and `loadChildren` with a `Routes` array).
+  (typeof ngDevMode === 'undefined' || ngDevMode) &&
+    validateConfig([merged], undefined, /* requireStandaloneComponents */ true);
+  Object.assign(route, merged);
 }
 
 async function maybeResolveResources<T>(value: T): Promise<T> {

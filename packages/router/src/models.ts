@@ -314,6 +314,52 @@ export type LoadChildrenCallback = () =>
 export type LoadChildren = LoadChildrenCallback;
 
 /**
+ * The subset of a `Route` that can be loaded lazily with `Route.loadConfig`.
+ *
+ * Only properties that are not needed to match the URL against the `Route` can be lazily loaded.
+ * Properties used during matching (`path`, `matcher`, `pathMatch`, `outlet`, `redirectTo`,
+ * `canMatch`, and `canLoad`) must always be defined statically.
+ *
+ * @see {@link Route#loadConfig}
+ * @publicApi
+ */
+export type LazyRouteConfig = Pick<
+  Route,
+  | 'title'
+  | 'component'
+  | 'loadComponent'
+  | 'canActivate'
+  | 'canActivateChild'
+  | 'canDeactivate'
+  | 'data'
+  | 'resolve'
+  | 'resources'
+  | 'children'
+  | 'loadChildren'
+  | 'runGuardsAndResolvers'
+  | 'providers'
+>;
+
+/**
+ * Function that is called to lazily load the remaining configuration of a `Route`.
+ *
+ * ```ts
+ * [{
+ *   path: 'lazy',
+ *   loadConfig: () => import('./lazy-route/lazy.config'),
+ * }];
+ * ```
+ *
+ * @see {@link Route#loadConfig}
+ * @see {@link LazyRouteConfig}
+ * @publicApi
+ */
+export type LoadConfigCallback = () =>
+  | LazyRouteConfig
+  | Observable<LazyRouteConfig | DefaultExport<LazyRouteConfig>>
+  | Promise<LazyRouteConfig | DefaultExport<LazyRouteConfig>>;
+
+/**
  *
  * How to handle query parameters in a router link.
  * One of:
@@ -774,6 +820,58 @@ export interface Route {
    *
    */
   loadChildren?: LoadChildren;
+
+  /**
+   * A function that lazily loads the rest of this `Route`'s configuration.
+   *
+   * The properties used to match the URL (`path`, `matcher`, `pathMatch`, `outlet`, `redirectTo`,
+   * `canMatch`, and `canLoad`) stay in the static config. Everything else (`component`,
+   * `loadComponent`, `children`, `loadChildren`, `canActivate`, `canActivateChild`,
+   * `canDeactivate`, `resolve`, `resources`, `data`, `title`, `providers`, and
+   * `runGuardsAndResolvers`) can be moved into a separate file and loaded on demand, so that the
+   * guards, resolvers, and providers of a route do not have to ship in the initial bundle.
+   *
+   * ```ts
+   * // app.routes.ts
+   * export const routes: Routes = [{
+   *   path: 'admin/:id',
+   *   canMatch: [isAdminUser],
+   *   loadConfig: () => import('./admin/admin.config'),
+   * }];
+   *
+   * // admin/admin.config.ts
+   * export default {
+   *   component: AdminComponent,
+   *   canActivate: [adminGuard],
+   *   resolve: {user: userResolver},
+   *   providers: [AdminService],
+   *   children: [{path: 'settings', component: AdminSettingsComponent}],
+   * } satisfies LazyRouteConfig;
+   * ```
+   *
+   * The configuration is loaded the first time the `Route` matches a URL (after its `canMatch`
+   * guards allow the match) and is then merged into the `Route`. It is only loaded once. Unlike
+   * an empty-path child route under `loadChildren`, no additional `ActivatedRoute` is created, so
+   * relative navigation, params, and data inheritance behave exactly as they do for a static route.
+   *
+   * The loaded configuration must not define a property that is already defined statically on
+   * the `Route`. `component` in a lazily loaded configuration must be a standalone component.
+   *
+   * The function is run in an injection context so it can call `inject` to get any required
+   * dependencies. It may return the configuration directly, a `Promise`, or an `Observable`, and
+   * default exports are unwrapped automatically.
+   *
+   * @see {@link LazyRouteConfig}
+   * @see [Injection context lazy loading](guide/routing/loading-strategies)
+   * @developerPreview 22.2
+   */
+  loadConfig?: LoadConfigCallback;
+  /**
+   * Filled for routes with `loadConfig` once the configuration is loaded and merged into the
+   * route.
+   * @internal
+   */
+  _loadedConfig?: LazyRouteConfig;
 
   /**
    * A policy for when to run guards and resolvers on a route.

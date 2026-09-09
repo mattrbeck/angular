@@ -60,9 +60,41 @@ If the lazily loaded file uses a `default` export, you can return the `import()`
 
 Lazily loading routes can significantly improve the load speed of your Angular application by removing large portions of JavaScript from the initial bundle. These portions of your code compile into separate JavaScript "chunks" that the router requests only when the user visits the corresponding route.
 
+## Lazily loaded route configuration
+
+`loadComponent` and `loadChildren` only defer the component and the child routes. Everything else on a `Route` (guards, resolvers, providers, static data, the title) still ships in the bundle that holds the route configuration. The [`loadConfig`](api/router/Route#loadConfig) property defers all of it at once: the properties needed to match the URL stay in the static config and the rest is loaded the first time the route matches.
+
+```ts
+// app.routes.ts
+import {Routes} from '@angular/router';
+
+export const routes: Routes = [
+  {
+    path: 'admin/:id',
+    canMatch: [isAdminUser],
+    loadConfig: () => import('./admin/admin.config'),
+  },
+];
+```
+
+```ts
+// admin/admin.config.ts
+import {LazyRouteConfig} from '@angular/router';
+
+export default {
+  component: AdminComponent,
+  canActivate: [adminGuard],
+  resolve: {user: userResolver},
+  providers: [AdminService],
+  children: [{path: 'settings', component: AdminSettingsComponent}],
+} satisfies LazyRouteConfig;
+```
+
+The loader runs after the route's `canMatch` guards allow the match, so a rejected match never downloads the chunk. The loaded configuration is merged into the route itself, which means the route behaves exactly like a statically configured one: no extra `ActivatedRoute` is created, and params, data inheritance, and relative navigation are unchanged. The loaded configuration cannot contain `path`, `matcher`, `pathMatch`, `outlet`, `redirectTo`, `canMatch`, or `canLoad`, and it cannot redefine a property that is already set on the route.
+
 ## Injection context lazy loading
 
-The Router executes [`loadComponent`](/api/router/Route#loadComponent) and [`loadChildren`](/api/router/Route#loadChildren) within the **injection context of the current route**, allowing you to call [`inject`](/api/core/inject)inside these loader functions to access providers declared on that route, inherited from parent routes through hierarchical dependency injection, or available globally. This enables context-aware lazy loading.
+The Router executes [`loadComponent`](/api/router/Route#loadComponent), [`loadChildren`](/api/router/Route#loadChildren), and [`loadConfig`](/api/router/Route#loadConfig) within the **injection context of the current route**, allowing you to call [`inject`](/api/core/inject)inside these loader functions to access providers declared on that route, inherited from parent routes through hierarchical dependency injection, or available globally. This enables context-aware lazy loading.
 
 ```ts
 import {Routes} from '@angular/router';

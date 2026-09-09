@@ -8,9 +8,48 @@
 
 import {Routes} from '../src';
 import {PRIMARY_OUTLET} from '../src/shared';
-import {validateConfig} from '../src/utils/config';
+import {assertValidLazyRouteConfig, validateConfig} from '../src/utils/config';
 
 describe('config', () => {
+  describe('assertValidLazyRouteConfig', () => {
+    const route = {path: 'a', loadConfig: () => ({})};
+
+    it('should accept properties that can be lazily loaded', () => {
+      expect(() =>
+        assertValidLazyRouteConfig(route, {
+          component: ComponentA,
+          children: [],
+          providers: [],
+          data: {},
+          title: 'a',
+        }),
+      ).not.toThrow();
+    });
+
+    it('should reject properties that are used for matching', () => {
+      for (const key of ['path', 'matcher', 'pathMatch', 'outlet', 'redirectTo', 'canMatch']) {
+        expect(() => assertValidLazyRouteConfig(route, {[key]: 'x'} as any)).toThrowError(
+          new RegExp(`'${key}' is used to match the URL and cannot be lazily loaded`),
+        );
+      }
+    });
+
+    it('should reject overriding a property defined on the route', () => {
+      expect(() =>
+        assertValidLazyRouteConfig({...route, data: {a: 1}}, {data: {b: 2}}),
+      ).toThrowError(/'data' is defined both on the route and in the configuration loaded/);
+    });
+
+    it('should reject results that are not objects', () => {
+      expect(() => assertValidLazyRouteConfig(route, [] as any)).toThrowError(
+        /loadConfig must resolve to an object/,
+      );
+      expect(() => assertValidLazyRouteConfig(route, undefined as any)).toThrowError(
+        /loadConfig must resolve to an object/,
+      );
+    });
+  });
+
   describe('validateConfig', () => {
     it('should not throw when no errors', () => {
       expect(() =>
@@ -19,6 +58,24 @@ describe('config', () => {
           {path: 'b', component: ComponentA},
         ]),
       ).not.toThrow();
+    });
+
+    it('should not throw for a route with loadConfig', () => {
+      expect(() =>
+        validateConfig([{path: 'a', loadConfig: () => ({component: ComponentA})}]),
+      ).not.toThrow();
+    });
+
+    it('should not throw for a componentless named outlet route with loadConfig', () => {
+      expect(() =>
+        validateConfig([{path: 'a', outlet: 'aux', loadConfig: () => ({children: []})}]),
+      ).not.toThrow();
+    });
+
+    it('should throw when loadConfig is used with redirectTo', () => {
+      expect(() =>
+        validateConfig([{path: 'a', redirectTo: 'b', loadConfig: () => ({})}]),
+      ).toThrowError(/redirectTo and loadConfig cannot be used together/);
     });
 
     it('should not throw when a matcher is provided', () => {

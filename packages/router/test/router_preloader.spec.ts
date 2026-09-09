@@ -713,6 +713,78 @@ describe('RouterPreloader', () => {
     });
   });
 
+  describe('should preload loadConfig configs', () => {
+    let lazyConfigSpy: jasmine.Spy;
+    beforeEach(() => {
+      lazyConfigSpy = jasmine.createSpy('loadConfig');
+      TestBed.configureTestingModule({
+        providers: [
+          provideLocationMocks(),
+          provideRouter(
+            [{path: 'lazy', loadConfig: lazyConfigSpy}],
+            withPreloading(PreloadAllModules),
+          ),
+        ],
+      });
+    });
+
+    it('loads the config and then preloads everything the loaded config contains', async () => {
+      @Component({template: ''})
+      class LoadedComponent {}
+      @Component({template: ''})
+      class LoadedChildComponent {}
+
+      const lazyComponentSpy = jasmine.createSpy('loadComponent').and.returnValue(LoadedComponent);
+      const lazyChildrenSpy = jasmine
+        .createSpy('loadChildren')
+        .and.returnValue([{path: 'grandchild', component: LoadedChildComponent}]);
+      lazyConfigSpy.and.returnValue(
+        Promise.resolve({
+          loadComponent: lazyComponentSpy,
+          providers: [{provide: 'lazyToken', useValue: 'lazy'}],
+          children: [{path: 'child', loadChildren: lazyChildrenSpy}],
+        }),
+      );
+      const router = TestBed.inject(Router);
+      const loadedPaths: string[] = [];
+      router.events
+        .pipe(filter((e): e is RouteConfigLoadEnd => e instanceof RouteConfigLoadEnd))
+        .subscribe((e) => loadedPaths.push(e.route.path!));
+
+      const preloader = TestBed.inject(RouterPreloader);
+      preloader.preload().subscribe(() => {});
+      await timeout();
+
+      const route = router.config[0];
+      expect(lazyConfigSpy).toHaveBeenCalledTimes(1);
+      expect(lazyComponentSpy).toHaveBeenCalledTimes(1);
+      expect(lazyChildrenSpy).toHaveBeenCalledTimes(1);
+      expect(getLoadedComponent(route)).toEqual(LoadedComponent);
+      expect(route.children!.length).toBe(1);
+      expect(getLoadedRoutes(route.children![0])).toEqual([
+        {path: 'grandchild', component: LoadedChildComponent},
+      ]);
+      expect(getProvidersInjector(route)!.get('lazyToken')).toBe('lazy');
+      // One load for the config, one for its `loadComponent`, one for the child's `loadChildren`.
+      expect(loadedPaths.sort()).toEqual(['child', 'lazy', 'lazy']);
+    });
+
+    it('does not load the config twice', async () => {
+      @Component({template: ''})
+      class LoadedComponent {}
+      lazyConfigSpy.and.returnValue({component: LoadedComponent});
+
+      const preloader = TestBed.inject(RouterPreloader);
+      preloader.preload().subscribe(() => {});
+      await timeout();
+      preloader.preload().subscribe(() => {});
+      await timeout();
+
+      expect(lazyConfigSpy).toHaveBeenCalledTimes(1);
+      expect(TestBed.inject(Router).config[0].component).toEqual(LoadedComponent);
+    });
+  });
+
   describe('should preload loadComponent configs', () => {
     let lazyComponentSpy: jasmine.Spy;
     beforeEach(() => {

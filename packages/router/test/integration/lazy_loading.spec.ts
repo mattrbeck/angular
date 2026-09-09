@@ -10,6 +10,7 @@ import {LocationStrategy, HashLocationStrategy, Location} from '@angular/common'
 import {
   inject,
   Component,
+  InjectionToken,
   NgModule,
   NgModuleRef,
   Injectable,
@@ -45,10 +46,12 @@ import {
   provideRouter,
   withRouterConfig,
   RouterLink,
+  RouterOutlet,
 } from '../../index';
 import {getLoadedRoutes} from '../../src/router_devtools';
 import {
   RootCmp,
+  RootCmpWithTwoOutlets,
   BlankCmp,
   TeamCmp,
   UserCmp,
@@ -58,7 +61,7 @@ import {
   advance,
   simulateLocationChange,
 } from './integration_helpers';
-import {getLoadedComponent} from '../../src/utils/config';
+import {getLoadedComponent, getProvidersInjector} from '../../src/utils/config';
 import {of, delay} from 'rxjs';
 
 export function lazyLoadingIntegrationSuite(browserAPI: 'navigation' | 'history') {
@@ -692,7 +695,7 @@ export function lazyLoadingIntegrationSuite(browserAPI: 'navigation' | 'history'
       await advance(fixture);
 
       expect(recordedError.message).toContain(
-        `Invalid configuration of route 'lazy/loaded'. One of the following must be provided: component, loadComponent, redirectTo, children or loadChildren`,
+        `Invalid configuration of route 'lazy/loaded'. One of the following must be provided: component, loadComponent, redirectTo, children, loadChildren or loadConfig`,
       );
     });
 
@@ -1163,6 +1166,292 @@ export function lazyLoadingIntegrationSuite(browserAPI: 'navigation' | 'history'
 
       const link = fixture.nativeElement.querySelector('a');
       expect(link.getAttribute('href')).toEqual('/lazy/foo/simple');
+    });
+
+    describe('loadConfig', () => {
+      @Component({
+        selector: 'lazy-parent',
+        template: 'lazy-parent[<router-outlet></router-outlet>]',
+        imports: [RouterOutlet],
+      })
+      class LazyParentCmp {}
+
+      @Component({selector: 'lazy-child', template: 'lazy-child'})
+      class LazyChildCmp {
+        readonly route = inject(ActivatedRoute);
+      }
+
+      it('should lazily load component, children, guards, resolvers, data and title', async () => {
+        const router = TestBed.inject(Router);
+        const location = TestBed.inject(Location);
+        const fixture = await createRoot(router, RootCmp);
+        const recordedEvents: Event[] = [];
+        router.events.subscribe((e) => recordedEvents.push(e));
+
+        let canActivateCalls = 0;
+        const loadConfigSpy = jasmine.createSpy('loadConfig').and.callFake(() =>
+          Promise.resolve({
+            component: LazyParentCmp,
+            canActivate: [
+              () => {
+                canActivateCalls++;
+                return true;
+              },
+            ],
+            resolve: {user: () => 'resolved-user'},
+            data: {static: 'yes'},
+            title: 'Lazy Title',
+            children: [{path: 'child', component: LazyChildCmp}],
+          }),
+        );
+        router.resetConfig([{path: 'lazy/:id', loadConfig: loadConfigSpy}]);
+
+        router.navigateByUrl('/lazy/1/child');
+        await advance(fixture);
+
+        expect(location.path()).toEqual('/lazy/1/child');
+        expect(fixture.nativeElement).toHaveText('lazy-parent[lazy-child]');
+        expect(loadConfigSpy).toHaveBeenCalledTimes(1);
+        expect(canActivateCalls).toBe(1);
+        expect(
+          recordedEvents
+            .filter((e) => e instanceof RouteConfigLoadStart)
+            .map((e) => (e as RouteConfigLoadStart).route.path),
+        ).toEqual(['lazy/:id']);
+        expect(
+          recordedEvents
+            .filter((e) => e instanceof RouteConfigLoadEnd)
+            .map((e) => (e as RouteConfigLoadEnd).route.path),
+        ).toEqual(['lazy/:id']);
+
+        // The loaded config is merged into the route itself so, unlike `loadChildren` with an
+        // empty path child, there is no additional `ActivatedRoute` between the parent and child.
+        const childRoute = fixture.debugElement.query(By.directive(LazyChildCmp)).componentInstance
+          .route as ActivatedRoute;
+        const parentRoute = childRoute.parent!;
+        expect(parentRoute.snapshot.routeConfig?.path).toBe('lazy/:id');
+        expect(parentRoute.snapshot.params).toEqual({id: '1'});
+        expect(parentRoute.snapshot.data).toEqual(
+          jasmine.objectContaining({static: 'yes', user: 'resolved-user'}),
+        );
+        expect(parentRoute.snapshot.title).toBe('Lazy Title');
+        expect(parentRoute.parent).toBe(router.routerState.root);
+      });
+
+      it('should only load the config once', async () => {
+        const router = TestBed.inject(Router);
+        const location = TestBed.inject(Location);
+        const fixture = await createRoot(router, RootCmp);
+
+        let canActivateCalls = 0;
+        const loadConfigSpy = jasmine.createSpy('loadConfig').and.callFake(() => ({
+          component: LazyParentCmp,
+          canActivate: [
+            () => {
+              canActivateCalls++;
+              return true;
+            },
+          ],
+        }));
+        router.resetConfig([{path: 'lazy/:id', loadConfig: loadConfigSpy}]);
+
+        router.navigateByUrl('/lazy/1');
+        await advance(fixture);
+        router.navigateByUrl('/lazy/2');
+        await advance(fixture);
+
+        expect(location.path()).toEqual('/lazy/2');
+        expect(loadConfigSpy).toHaveBeenCalledTimes(1);
+        expect(canActivateCalls).toBe(2);
+      });
+
+      it('should not load the config when a canMatch guard rejects the route', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmp);
+
+        const loadConfigSpy = jasmine.createSpy('loadConfig').and.returnValue({
+          component: LazyParentCmp,
+        });
+        router.resetConfig([
+          {path: 'lazy', canMatch: [() => false], loadConfig: loadConfigSpy},
+          {path: 'lazy', component: SimpleCmp},
+        ]);
+
+        router.navigateByUrl('/lazy');
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('simple');
+        expect(loadConfigSpy).not.toHaveBeenCalled();
+      });
+
+      it('should create an injector from lazily loaded providers', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmp);
+        const TOKEN = new InjectionToken<string>('TOKEN');
+
+        @Component({selector: 'lazy-injecting', template: '{{value}}'})
+        class LazyInjectingCmp {
+          readonly value = inject(TOKEN);
+        }
+
+        let valueInGuard: string | undefined;
+        router.resetConfig([
+          {
+            path: 'lazy',
+            loadConfig: () => ({
+              providers: [{provide: TOKEN, useValue: 'from lazy providers'}],
+              canActivate: [
+                () => {
+                  valueInGuard = inject(TOKEN);
+                  return true;
+                },
+              ],
+              component: LazyInjectingCmp,
+            }),
+          },
+        ]);
+
+        router.navigateByUrl('/lazy');
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('from lazy providers');
+        expect(valueInGuard).toBe('from lazy providers');
+        expect(getProvidersInjector(router.config[0])!.get(TOKEN)).toBe('from lazy providers');
+      });
+
+      it('should run loadConfig in the injection context of the route', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmp);
+        const TOKEN = new InjectionToken<string>('TOKEN');
+
+        let valueInLoadConfig: string | undefined;
+        router.resetConfig([
+          {
+            path: 'lazy',
+            providers: [{provide: TOKEN, useValue: 'from static providers'}],
+            loadConfig: () => {
+              valueInLoadConfig = inject(TOKEN);
+              return {component: LazyParentCmp};
+            },
+          },
+        ]);
+
+        router.navigateByUrl('/lazy');
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('lazy-parent[]');
+        expect(valueInLoadConfig).toBe('from static providers');
+      });
+
+      it('should unwrap default exports and accept observables', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmp);
+
+        router.resetConfig([
+          {
+            path: 'lazy',
+            loadConfig: () => of({default: {component: LazyParentCmp}}).pipe(delay(1)),
+          },
+        ]);
+
+        router.navigateByUrl('/lazy');
+        await advance(fixture);
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('lazy-parent[]');
+      });
+
+      it('should support loadComponent and loadChildren in the loaded config', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmp);
+
+        router.resetConfig([
+          {
+            path: 'lazy',
+            loadConfig: () => ({
+              loadComponent: () => Promise.resolve(LazyParentCmp),
+              loadChildren: () => Promise.resolve([{path: 'child', component: LazyChildCmp}]),
+            }),
+          },
+        ]);
+
+        router.navigateByUrl('/lazy/child');
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('lazy-parent[lazy-child]');
+        expect(getLoadedComponent(router.config[0])).toBe(LazyParentCmp);
+        expect(getLoadedRoutes(router.config[0])!.length).toBe(1);
+      });
+
+      it('should work with componentless named outlet routes', async () => {
+        const router = TestBed.inject(Router);
+        const fixture = await createRoot(router, RootCmpWithTwoOutlets);
+
+        router.resetConfig([
+          {path: 'main', component: LazyParentCmp},
+          {
+            path: 'aux',
+            outlet: 'right',
+            loadConfig: () => ({children: [{path: '', component: LazyChildCmp}]}),
+          },
+        ]);
+
+        router.navigateByUrl('/main(right:aux)');
+        await advance(fixture);
+
+        expect(fixture.nativeElement).toHaveText('primary [lazy-parent[]] right [lazy-child]');
+      });
+
+      it('should throw when the loaded config defines a property already set on the route', async () => {
+        const router = TestBed.inject(Router);
+        await createRoot(router, RootCmp);
+
+        router.resetConfig([
+          {path: 'lazy', component: SimpleCmp, loadConfig: () => ({component: LazyParentCmp})},
+        ]);
+
+        await expectAsync(router.navigateByUrl('/lazy')).toBeRejectedWithError(
+          /'component' is defined both on the route and in the configuration loaded by loadConfig/,
+        );
+      });
+
+      it('should throw when the loaded config contains properties used for matching', async () => {
+        const router = TestBed.inject(Router);
+        await createRoot(router, RootCmp);
+
+        router.resetConfig([
+          {
+            path: 'lazy',
+            loadConfig: () => ({canMatch: [() => true], component: LazyParentCmp}) as any,
+          },
+        ]);
+
+        await expectAsync(router.navigateByUrl('/lazy')).toBeRejectedWithError(
+          /'canMatch' is used to match the URL and cannot be lazily loaded with loadConfig/,
+        );
+      });
+
+      it('should throw when the loaded component is not standalone', async () => {
+        const router = TestBed.inject(Router);
+        await createRoot(router, RootCmp);
+
+        router.resetConfig([{path: 'lazy', loadConfig: () => ({component: SimpleCmp})}]);
+
+        await expectAsync(router.navigateByUrl('/lazy')).toBeRejectedWithError(
+          /The component must be standalone/,
+        );
+      });
+
+      it('should throw when the loaded config has nothing to render', async () => {
+        const router = TestBed.inject(Router);
+        await createRoot(router, RootCmp);
+
+        router.resetConfig([{path: 'lazy', loadConfig: () => ({data: {only: 'data'}})}]);
+
+        await expectAsync(router.navigateByUrl('/lazy')).toBeRejectedWithError(
+          /The configuration loaded by loadConfig must provide one of the following/,
+        );
+      });
     });
   });
 }
