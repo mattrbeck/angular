@@ -298,6 +298,12 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
   }
 
   createObjectLiteral(properties: ObjectLiteralProperty<ts.Expression>[]): ts.Expression {
+    // A commented property is printed on lines of its own. The comment is often a line-scoped
+    // directive such as `@ts-ignore`, which would otherwise also apply to whatever follows the
+    // property on its last line: the next property, or the next element of an enclosing array.
+    const multiLine = properties.some(
+      (prop) => prop.kind === 'property' && (prop.leadingComments?.length ?? 0) > 0,
+    );
     return ts.factory.createObjectLiteralExpression(
       properties.map((prop) => {
         if (prop.kind === 'spread') {
@@ -315,6 +321,7 @@ export class TypeScriptAstFactory implements AstFactory<ts.Statement, ts.Express
         }
         return propNode;
       }),
+      multiLine,
     );
   }
 

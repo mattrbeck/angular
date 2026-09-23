@@ -443,7 +443,31 @@ describe('TypeScriptAstFactory', () => {
           leadingComments: [leadingComment('@ts-ignore', true, true)],
         },
       ]);
-      expect(generate(obj)).toEqual('{ /* @ts-ignore */\n    prop1: 42 }');
+      expect(generate(obj)).toEqual('{\n    /* @ts-ignore */\n    prop1: 42\n}');
+    });
+
+    it('should not leave anything else on the last line of a commented property', () => {
+      // `@ts-ignore` covers the whole of the next line, so the next element of an enclosing array
+      // must not share it with the guarded property.
+      const {
+        items: [guardedValue, unguardedValue],
+        generate,
+      } = setupExpressions('A', 'B');
+      const guarded = factory.createObjectLiteral([
+        {
+          propertyName: 'type',
+          value: guardedValue,
+          kind: 'property',
+          quoted: false,
+          leadingComments: [leadingComment('@ts-ignore', true, true)],
+        },
+      ]);
+      const unguarded = factory.createObjectLiteral([
+        {propertyName: 'type', value: unguardedValue, kind: 'property', quoted: false},
+      ]);
+      expect(generate(factory.createArrayLiteral([guarded, unguarded]))).toEqual(
+        '[{\n        /* @ts-ignore */\n        type: A\n    }, { type: B }]',
+      );
     });
   });
 

@@ -1522,9 +1522,9 @@ runInEachFileSystem(() => {
         // Neither type could be confirmed to exist at runtime, so each parameter type is guarded
         // individually on the `type` property assignment. Even when a parameter decorator forces
         // the object literal across multiple lines, the comment stays on the line immediately
-        // before `type:`.
+        // before `type:`, and nothing else shares the line it guards.
         expect(jsContents).toMatch(
-          /\(\) => \[\{\s*\/\* @ts-ignore \*\/\n\s*type: i1\.SomeService1 \}, \{\s*\/\* @ts-ignore \*\/\n\s*type: SomeService2,\s*decorators: \[\{\s*type: Optional\s*\}\]\s*\}\], null\)/,
+          /\(\) => \[\{\s*\/\* @ts-ignore \*\/\n\s*type: i1\.SomeService1\n\s*\}, \{\s*\/\* @ts-ignore \*\/\n\s*type: SomeService2,\s*decorators: \[\{\s*type: Optional\s*\}\]\s*\}\], null\)/,
         );
       });
 

@@ -59,7 +59,7 @@ describe('AbstractEmitter', () => {
         new o.LiteralMapPropertyAssignment('b', o.literal(2), false),
       ]);
 
-      expect(emitExpr(expr)).toBe('{\n// comment\na: 1, b: 2}');
+      expect(emitExpr(expr)).toBe('{\n// comment\na: 1,\nb: 2}');
     });
 
     it('should emit leading comments on subsequent property assignments after the comma', () => {
@@ -68,7 +68,7 @@ describe('AbstractEmitter', () => {
         new o.LiteralMapPropertyAssignment('b', o.literal(2), false, [o.leadingComment('comment')]),
       ]);
 
-      expect(emitExpr(expr)).toBe('{a: 1,\n// comment\nb: 2}');
+      expect(emitExpr(expr)).toBe('{a: 1,\n// comment\nb: 2\n}');
     });
 
     it('should omit leading comments on property assignments when printComments is false', () => {
@@ -86,7 +86,28 @@ describe('AbstractEmitter', () => {
         new o.LiteralMapPropertyAssignment('a', o.literal(1), false, [o.leadingComment('comment')]),
       ]);
 
-      expect(emitExpr(expr)).toBe('{...rest,\n// comment\na: 1}');
+      expect(emitExpr(expr)).toBe('{...rest,\n// comment\na: 1\n}');
+    });
+
+    it('should not leave anything else on the last line of a commented property assignment', () => {
+      // `@ts-ignore` covers the whole of the next line, so neither the next property nor the next
+      // element of an enclosing array may share it with the guarded one.
+      const guarded = new o.LiteralMapExpr([
+        new o.LiteralMapPropertyAssignment('type', o.variable('A'), false, [
+          o.leadingComment('@ts-ignore', true, true),
+        ]),
+        new o.LiteralMapPropertyAssignment('decorators', o.literalArr([]), false),
+      ]);
+      const unguarded = new o.LiteralMapExpr([
+        new o.LiteralMapPropertyAssignment('type', o.variable('B'), false),
+      ]);
+
+      expect(emitExpr(o.literalArr([guarded, unguarded]))).toBe(
+        '[{\n/* @ts-ignore */\ntype: A,\ndecorators: []}, {type: B}]',
+      );
+      expect(emitExpr(o.literalArr([new o.LiteralMapExpr([guarded.entries[0]]), unguarded]))).toBe(
+        '[{\n/* @ts-ignore */\ntype: A\n}, {type: B}]',
+      );
     });
   });
 });

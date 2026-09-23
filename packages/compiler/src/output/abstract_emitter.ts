@@ -552,28 +552,38 @@ export abstract class AbstractEmitterVisitor
   visitLiteralMapExpr(ast: o.LiteralMapExpr, ctx: EmitterVisitorContext): void {
     this.printLeadingComments(ast, ctx);
     ctx.print(ast, `{`);
+    // A commented entry is printed on lines of its own. The comment is often a line-scoped
+    // directive such as `@ts-ignore`, which would otherwise also apply to whatever follows the
+    // entry on its last line: the next entry, or the next element of an enclosing array.
+    let previousHasLeadingComments = false;
     for (let i = 0; i < ast.entries.length; i++) {
       const entry = ast.entries[i];
       if (entry instanceof o.LiteralMapSpreadAssignment) {
         if (i > 0) {
-          ctx.print(ast, ', ', false);
+          ctx.print(ast, previousHasLeadingComments ? ',' : ', ', previousHasLeadingComments);
         }
         ctx.print(ast, '...');
         entry.expression.visitExpression(this, ctx);
+        previousHasLeadingComments = false;
       } else {
         const hasLeadingComments =
           this.printComments &&
           entry.leadingComments !== undefined &&
           entry.leadingComments.length > 0;
+        const breakBefore = hasLeadingComments || previousHasLeadingComments;
         if (i > 0) {
-          ctx.print(ast, hasLeadingComments ? ',' : ', ', hasLeadingComments);
+          ctx.print(ast, breakBefore ? ',' : ', ', breakBefore);
         } else if (hasLeadingComments) {
           ctx.println(ast);
         }
         this.printLeadingComments(entry, ctx);
         ctx.print(ast, `${escapeIdentifier(entry.key, entry.quoted)}: `);
         entry.value.visitExpression(this, ctx);
+        previousHasLeadingComments = hasLeadingComments;
       }
+    }
+    if (previousHasLeadingComments) {
+      ctx.println(ast);
     }
     ctx.print(ast, `}`);
   }
