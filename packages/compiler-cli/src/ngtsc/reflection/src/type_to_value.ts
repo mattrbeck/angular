@@ -74,6 +74,13 @@ export function typeToValue(
     // Local compilation couldn't prove that this is a type-only symbol, so it falls through and
     // gets emitted as a value even though it may not exist at runtime.
     valueUnverified = true;
+  } else if (isReachedThroughTypeOnlyAlias(typeNode.typeName, checker)) {
+    // The declaration has a value, but the path this file reaches it through does not hand that
+    // value on: a module along the way binds it with `import type` or re-exports it with
+    // `export type`. The checker resolves through those, yet at runtime the name is not exported,
+    // so the reference is emitted but cannot be verified.
+    // TODO: this does not see `export type * from '...'`, which leaves no alias to inspect.
+    valueUnverified = true;
   }
 
   // The type points to a valid value declaration. Rewrite the TypeReference into an
@@ -189,6 +196,40 @@ export function typeToValue(
   } else {
     return unsupportedType(typeNode);
   }
+}
+
+/**
+ * Whether any name in `typeName` (`Foo`, or each of `ns`, `ns.inner` and `ns.inner.Foo`) resolves
+ * through a type-only import or export, e.g. a module that does
+ * `import type {Foo} from './foo'; export {Foo};` or `import {Foo} from './foo'; export type {Foo};`.
+ */
+function isReachedThroughTypeOnlyAlias(typeName: ts.EntityName, checker: ts.TypeChecker): boolean {
+  for (let name: ts.EntityName = typeName; ; name = name.left) {
+    const symbol = checker.getSymbolAtLocation(name);
+    if (symbol !== undefined && hasTypeOnlyAlias(symbol, checker)) {
+      return true;
+    }
+    if (!ts.isQualifiedName(name)) {
+      return false;
+    }
+  }
+}
+
+/**
+ * Whether the alias chain starting at `symbol` passes through a type-only import or export
+ * declaration.
+ */
+function hasTypeOnlyAlias(symbol: ts.Symbol, checker: ts.TypeChecker): boolean {
+  const seen = new Set<ts.Symbol>();
+  let current: ts.Symbol | undefined = symbol;
+  while (current !== undefined && current.flags & ts.SymbolFlags.Alias && !seen.has(current)) {
+    seen.add(current);
+    if (current.declarations?.some((decl) => ts.isTypeOnlyImportOrExportDeclaration(decl))) {
+      return true;
+    }
+    current = checker.getImmediateAliasedSymbol(current);
+  }
+  return false;
 }
 
 function unsupportedType(typeNode: ts.TypeNode): UnavailableTypeValueReference {

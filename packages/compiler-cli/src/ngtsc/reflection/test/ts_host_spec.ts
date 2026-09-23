@@ -278,6 +278,93 @@ runInEachFileSystem(() => {
         expectParameter(args[0], 'bar', 'Bar');
         expectParameter(args[1], 'baz', 'Baz');
       });
+
+      it('should flag a value reached through a type-only re-export as unverified', () => {
+        const {program} = makeProgram([
+          {
+            name: _('/classes.ts'),
+            contents: `
+            export class Direct {}
+            export class ImportedAsType {}
+            export class ExportedAsType {}
+            export class InlineExportedAsType {}
+            export class RenamedAsType {}
+          `,
+          },
+          {
+            name: _('/barrel.ts'),
+            contents: `
+            import type {ImportedAsType} from './classes';
+            import {ExportedAsType, InlineExportedAsType, RenamedAsType} from './classes';
+            import type * as typeNs from './classes';
+            export {Direct} from './classes';
+            export {ImportedAsType, typeNs};
+            export type {ExportedAsType};
+            export {type InlineExportedAsType};
+            export type {RenamedAsType as Renamed};
+            class DeclaredAsType {}
+            export type {DeclaredAsType};
+          `,
+          },
+          {
+            name: _('/forward.ts'),
+            contents: `
+            export {ImportedAsType as Forwarded} from './barrel';
+          `,
+          },
+          {
+            name: _('/entry.ts'),
+            contents: `
+            import {
+              Direct,
+              ImportedAsType,
+              ExportedAsType,
+              InlineExportedAsType,
+              Renamed,
+              DeclaredAsType,
+            } from './barrel';
+            import {Forwarded} from './forward';
+            import * as barrel from './barrel';
+
+            class Foo {
+              constructor(
+                direct: Direct,
+                importedAsType: ImportedAsType,
+                exportedAsType: ExportedAsType,
+                inlineExportedAsType: InlineExportedAsType,
+                renamed: Renamed,
+                declaredAsType: DeclaredAsType,
+                forwarded: Forwarded,
+                qualifiedDirect: barrel.Direct,
+                qualifiedAsType: barrel.ExportedAsType,
+                nestedAsType: barrel.typeNs.Direct,
+              ) {}
+            }
+          `,
+          },
+        ]);
+        const clazz = getDeclaration(program, _('/entry.ts'), 'Foo', isNamedClassDeclaration);
+        const checker = program.getTypeChecker();
+        const host = new TypeScriptReflectionHost(checker);
+        const unverified = host.getConstructorParameters(clazz)!.map((param) => {
+          if (param.typeValueReference.kind === TypeValueReferenceKind.UNAVAILABLE) {
+            return fail(`Expected parameter ${param.name} to have a typeValueReference`);
+          }
+          return [param.name, param.typeValueReference.valueUnverified === true];
+        });
+        expect(unverified).toEqual([
+          ['direct', false],
+          ['importedAsType', true],
+          ['exportedAsType', true],
+          ['inlineExportedAsType', true],
+          ['renamed', true],
+          ['declaredAsType', true],
+          ['forwarded', true],
+          ['qualifiedDirect', false],
+          ['qualifiedAsType', true],
+          ['nestedAsType', true],
+        ]);
+      });
     });
 
     describe('getImportOfIdentifier()', () => {

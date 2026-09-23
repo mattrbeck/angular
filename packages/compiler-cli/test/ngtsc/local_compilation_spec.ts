@@ -1550,6 +1550,54 @@ runInEachFileSystem(() => {
 
         expect(jsContents).toContain('() => [{ type: SomeService }], null)');
       });
+
+      it('should guard constructor parameter types reached through a type-only re-export', () => {
+        env.write(
+          'classes.ts',
+          `
+          export class Direct {}
+          export class ImportedAsType {}
+          export class ExportedAsType {}
+          `,
+        );
+        env.write(
+          'barrel.ts',
+          `
+          import type {ImportedAsType} from './classes';
+          import {ExportedAsType} from './classes';
+          export {Direct} from './classes';
+          export {ImportedAsType};
+          export type {ExportedAsType};
+          `,
+        );
+        env.write(
+          'test.ts',
+          `
+          import {Directive} from '@angular/core';
+          import {Direct, ImportedAsType, ExportedAsType} from './barrel';
+
+          @Directive({
+            selector: '[main]',
+          })
+          export class MainDirective {
+            constructor(
+              private importedAsType: ImportedAsType,
+              private direct: Direct,
+              private exportedAsType: ExportedAsType,
+              ) {}
+          }
+          `,
+        );
+
+        env.driveMain();
+        const jsContents = env.getContents('test.js');
+
+        // Each class resolves to a value declaration, but './barrel' only exports the first and
+        // last in type position, so neither exists at runtime for this file.
+        expect(jsContents).toMatch(
+          /\(\) => \[\{\s*\/\* @ts-ignore \*\/\n\s*type: i1\.ImportedAsType\s*\}, \{\s*type: i1\.Direct\s*\}, \{\s*\/\* @ts-ignore \*\/\n\s*type: i1\.ExportedAsType\s*\}\], null\)/,
+        );
+      });
     });
 
     describe('LOCAL_COMPILATION_UNRESOLVED_CONST errors', () => {
