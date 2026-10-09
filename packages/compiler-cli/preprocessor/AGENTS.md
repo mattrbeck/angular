@@ -17,3 +17,26 @@ When working on this codebase, adhere to the following rules:
    - **No Fallback Where Upstream Fails**: Where an ngtsc emit strategy cannot honour a reference it returns `ReferenceEmitKind.Failed` (`imports/src/emitter.ts`) instead of substituting a working-ish alternative, and we must reach the same outcome. Note `Failed` is a returned value, not a throw, and callers differ: those going through `assertSuccessfulReferenceEmit` raise `FatalDiagnosticError` NG3004 (`IMPORT_GENERATION_FAILURE`), the TCB defers it until the reference is actually used (`typecheck/src/reference_emit_environment.ts`), and `canReferenceType` and the language service's potential-import lookup (`typecheck/src/checker.ts`) treat it as a silent predicate. Match the caller, not a blanket diagnostic. A fallback upstream does not have is a bug **even when its output looks better than the alternative**.
 10. **Cross-File Reference Projection Across Frames**: Metadata extracted from AST during single-file analysis is evaluated in the frame of the declaring file (e.g. raw relative imports like `./models`). When that declaration is consumed by a different file, NgModule scope, or serialized into wire metadata, all module specifiers and references MUST be projected into the consumer's frame via the query engine's `ReferenceEmitStrategy` (e.g. in `contextualize_declaration` and `ClassData::to_wire`). Never leak raw declaring-file-relative specifiers into consumer metadata.
 11. **Matching `ngtsc` Strictness & Diagnostics**: Match the exact behavior and strictness of `ngtsc`. We must not be more permissive than `ngtsc`. If `ngtsc` produces diagnostics or errors for a pattern or construct, this preprocessor should produce diagnostics as well rather than silently allowing or forgiving invalid code.
+
+## Building & Testing in the Angular Monorepo
+
+This package lives under `packages/compiler-cli/preprocessor` in the Angular monorepo:
+
+- `packages/compiler-cli/preprocessor/ng-analyze`: Rust analysis engine (`ng_analyze` crate and `ng_analyze_wasm` Wasm target).
+- `packages/compiler-cli/preprocessor/src`: TypeScript downstream code generator and TCB/Wasm/sidecar adapters.
+- `packages/compiler-cli/preprocessor/test`: Jasmine unit and golden compliance tests.
+
+Use `pnpm bazel` to build and test targets:
+
+- Run Rust `ng-analyze` unit tests:
+  ```bash
+  pnpm bazel test //packages/compiler-cli/preprocessor/ng-analyze:test
+  ```
+- Build the Wasm analyzer binding:
+  ```bash
+  pnpm bazel build //packages/compiler-cli/preprocessor/ng-analyze:wasm
+  ```
+- Run TypeScript & Wasm preprocessor tests:
+  ```bash
+  pnpm bazel test //packages/compiler-cli/preprocessor/test:test
+  ```

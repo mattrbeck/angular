@@ -122,7 +122,6 @@ pub struct Analyzer {
     tsconfig_path: PathBuf,
     entrypoints: Arc<RwLock<Vec<PathBuf>>>,
     current_cancel_token: RwLock<Option<CancellationToken>>,
-    eager_cancel_token: RwLock<Option<CancellationToken>>,
 }
 
 impl Analyzer {
@@ -186,8 +185,6 @@ impl Analyzer {
 
         let entrypoints_lock = Arc::new(RwLock::new(entrypoints));
 
-        let eager_cancel_token = CancellationToken::new();
-
         let resource_registry = Arc::new(ResourceRegistry::default());
 
         let resolver = Arc::new(create_resolver_with_fs(
@@ -240,7 +237,6 @@ impl Analyzer {
             tsconfig_path: path,
             entrypoints: entrypoints_lock,
             current_cancel_token: RwLock::new(None),
-            eager_cancel_token: RwLock::new(Some(eager_cancel_token.clone())),
         };
 
         Ok(analyzer)
@@ -295,17 +291,7 @@ impl Analyzer {
         spawner: S,
     ) -> Result<futures::channel::mpsc::UnboundedReceiver<Result<CompilationChunk, String>>, String>
     {
-        self.cancel_current_analysis();
-
-        let (final_sender, receiver) = futures::channel::mpsc::unbounded();
-        let cancel_token = CancellationToken::new();
-        *self.current_cancel_token.write().unwrap() = Some(cancel_token.clone());
-
-        let paths: Vec<PathBuf> = self.entrypoints.read().unwrap().clone();
-
-        self.run_coordinator_helper(paths, spawner, false, cancel_token, Some(final_sender));
-
-        Ok(receiver)
+        self.analyze_core(spawner)
     }
 
     pub fn analyze_optimized_delta_core<S: Spawner>(
@@ -313,26 +299,12 @@ impl Analyzer {
         spawner: S,
     ) -> Result<futures::channel::mpsc::UnboundedReceiver<Result<CompilationChunk, String>>, String>
     {
-        self.cancel_current_analysis();
-
-        let (final_sender, receiver) = futures::channel::mpsc::unbounded();
-        let cancel_token = CancellationToken::new();
-        *self.current_cancel_token.write().unwrap() = Some(cancel_token.clone());
-
-        let paths: Vec<PathBuf> = self.entrypoints.read().unwrap().clone();
-
-        self.run_coordinator_helper(paths, spawner, true, cancel_token, Some(final_sender));
-
-        Ok(receiver)
+        self.analyze_optimized_core(spawner)
     }
 
     pub fn cancel_current_analysis(&self) {
         let mut token_write = self.current_cancel_token.write().unwrap();
         if let Some(token) = token_write.take() {
-            token.cancel();
-        }
-        let mut eager_token_write = self.eager_cancel_token.write().unwrap();
-        if let Some(token) = eager_token_write.take() {
             token.cancel();
         }
 
