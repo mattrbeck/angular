@@ -9,7 +9,6 @@
 
 // tslint:disable:no-console
 
-import {fileURLToPath} from 'url';
 import * as fs from 'node:fs/promises';
 import * as path from 'path';
 import {resolveWorkspaceConfig, stripJsonComments} from './src/workspace.js';
@@ -18,6 +17,7 @@ import type {NgpCompilerOptions} from './src/compiler_options.js';
 import {HybridCompiler, IAnalyzer} from './src/hybrid_compiler.js';
 import {buildTypeCheckingConfig} from './src/tcb.js';
 import {SidecarAnalyzer} from './src/analyzer_sidecar.js';
+import {createAnalyzer} from './api.js';
 import {run} from './ngp.js';
 
 (async () => {
@@ -34,9 +34,6 @@ import {run} from './ngp.js';
     if (sidecarIndex !== -1 && args[sidecarIndex + 1]) {
       sidecarPath = args[sidecarIndex + 1];
     }
-
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
 
     // Parse --out <dir> argument
     let outDir: string | null = null;
@@ -127,18 +124,9 @@ import {run} from './ngp.js';
       });
       innerAnalyzer = sidecar;
     } else {
-      const {NapiAnalyzer} = await import('./src/analyzer_napi.js');
-      let ngAnalyzeDir = path.resolve(__dirname, './ng-analyze');
-
-      try {
-        await fs.access(ngAnalyzeDir);
-        ngAnalyzeDir = path.resolve(__dirname, '../../ng-analyze');
-      } catch {}
-
-      innerAnalyzer = await NapiAnalyzer.create(tsconfigPath, {
+      innerAnalyzer = await createAnalyzer(tsconfigPath, {
         optimize,
-        useWasm,
-        ngAnalyzeDir,
+        backend: useWasm ? 'wasm' : undefined,
         workspaceName,
         rootDirs,
       });

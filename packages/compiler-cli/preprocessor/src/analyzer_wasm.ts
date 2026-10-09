@@ -14,24 +14,15 @@ export interface WasmInner {
   free(): void;
   pump(): string | undefined;
   analyze(): number;
-  analyze_optimized?(): number;
-  analyzeOptimized?(): number;
-  analyze_delta?(): number;
-  analyzeDelta?(): number;
-  analyze_optimized_delta?(): number;
-  analyzeOptimizedDelta?(): number;
-  updateFileContent?(updatesJson: string): string;
-  update_file_content?(updatesJson: string): string;
-  invalidateFiles?(updatesJson: string): string;
-  invalidate_files?(updatesJson: string): string;
-  getMetadataForFile?(filePath: string): string | undefined;
-  get_metadata_for_file?(filePath: string): string | undefined;
-  getFileContent?(filePath: string): string;
-  get_file_content?(filePath: string): string;
-  getTsFileForTemplate?(templatePath: string): string | undefined;
-  get_ts_file_for_template?(templatePath: string): string | undefined;
-  closeStream?(id: number): void;
-  close_stream?(id: number): void;
+  analyze_optimized(): number;
+  analyze_delta(): number;
+  analyze_optimized_delta(): number;
+  update_file_content(updatesJson: string): string;
+  invalidate_files(updatesJson: string): string;
+  get_metadata_for_file(filePath: string): string | undefined;
+  get_file_content(filePath: string): string;
+  get_ts_file_for_template(templatePath: string): string | undefined;
+  close_stream(id: number): void;
 }
 
 interface WasmEvent {
@@ -77,7 +68,7 @@ export class WasmAnalyzer implements IAnalyzer {
       const eventStr = this.inner.pump();
       if (!eventStr) {
         idleCount++;
-        if (idleCount > 1000) {
+        if (idleCount > 16) {
           break;
         }
         continue;
@@ -91,8 +82,8 @@ export class WasmAnalyzer implements IAnalyzer {
             stream.queue.push(event.data);
           } else if (event.event === 'analysisComplete') {
             stream.queue.push(null);
-          } else if (event.event === 'analysisError' && event.error) {
-            stream.error = new Error(event.error);
+          } else if (event.event === 'analysisError') {
+            stream.error = new Error(event.error ?? 'Unknown analysis error');
           }
           if (stream.nextResolve) {
             const resolve = stream.nextResolve;
@@ -117,34 +108,15 @@ export class WasmAnalyzer implements IAnalyzer {
   }
 
   analyzeOptimized(): AsyncGenerator<nga.CompilationChunk, void, unknown> {
-    return this.consumeStream(() =>
-      this.startOptional(
-        this.inner.analyze_optimized ?? this.inner.analyzeOptimized,
-        'analyzeOptimized',
-      ),
-    );
+    return this.consumeStream(() => this.inner.analyze_optimized());
   }
 
   analyzeDelta(): AsyncGenerator<nga.CompilationChunk, void, unknown> {
-    return this.consumeStream(() =>
-      this.startOptional(this.inner.analyze_delta ?? this.inner.analyzeDelta, 'analyzeDelta'),
-    );
+    return this.consumeStream(() => this.inner.analyze_delta());
   }
 
   analyzeOptimizedDelta(): AsyncGenerator<nga.CompilationChunk, void, unknown> {
-    return this.consumeStream(() =>
-      this.startOptional(
-        this.inner.analyze_optimized_delta ?? this.inner.analyzeOptimizedDelta,
-        'analyzeOptimizedDelta',
-      ),
-    );
-  }
-
-  private startOptional(start: (() => number) | undefined, name: string): number {
-    if (!start) {
-      throw new Error(`WasmInner does not support ${name}`);
-    }
-    return start.call(this.inner);
+    return this.consumeStream(() => this.inner.analyze_optimized_delta());
   }
 
   /**
@@ -166,21 +138,20 @@ export class WasmAnalyzer implements IAnalyzer {
 
     try {
       while (true) {
-        // TODO(wasm): deliver queued chunks before throwing on stream error to match N-API.
+        const item = stream.queue.shift();
+        if (item !== undefined) {
+          if (item === null) {
+            return;
+          }
+          yield item;
+          continue;
+        }
         if (stream.error) {
           throw stream.error;
         }
-        const item = stream.queue.shift();
-        if (item === undefined) {
-          await new Promise<void>((resolve) => {
-            stream.nextResolve = () => resolve();
-          });
-          continue;
-        }
-        if (item === null) {
-          return;
-        }
-        yield item;
+        await new Promise<void>((resolve) => {
+          stream.nextResolve = () => resolve();
+        });
       }
     } finally {
       this.releaseStream(id);
@@ -189,13 +160,11 @@ export class WasmAnalyzer implements IAnalyzer {
 
   /**
    * Unregisters stream `id` and drops the engine's receiver for it. Once a stream has ended
-   * the engine has already dropped the receiver, so `close_stream` does nothing then. Older
-   * engine builds do not export `close_stream`; for those only the JS side is released.
+   * the engine has already dropped the receiver, so `close_stream` does nothing then.
    */
   private releaseStream(id: number): void {
     this.streams.delete(id);
-    const close = this.inner.close_stream ?? this.inner.closeStream;
-    close?.call(this.inner, id);
+    this.inner.close_stream(id);
   }
 
   async getMetadataForFile(filePath: string): Promise<nga.AnalysisResult | null> {
@@ -204,11 +173,7 @@ export class WasmAnalyzer implements IAnalyzer {
 
   async updateFileContent(updates: {filePath: string; content: string}[]): Promise<string[]> {
     const jsonStr = JSON.stringify(updates);
-    const fn = this.inner.updateFileContent ?? this.inner.update_file_content;
-    if (!fn) {
-      throw new Error('WasmInner does not support updateFileContent');
-    }
-    const res = fn.call(this.inner, jsonStr);
+    const res = this.inner.update_file_content(jsonStr);
     return Promise.resolve(JSON.parse(res) as string[]);
   }
 
@@ -222,11 +187,7 @@ export class WasmAnalyzer implements IAnalyzer {
           : u.updateType,
     }));
     const jsonStr = JSON.stringify(mapped);
-    const fn = this.inner.invalidateFiles ?? this.inner.invalidate_files;
-    if (!fn) {
-      throw new Error('WasmInner does not support invalidateFiles');
-    }
-    const res = fn.call(this.inner, jsonStr);
+    const res = this.inner.invalidate_files(jsonStr);
     return Promise.resolve(JSON.parse(res) as string[]);
   }
 
@@ -239,30 +200,22 @@ export class WasmAnalyzer implements IAnalyzer {
   }
 
   getMetadataForFileSync(filePath: string): nga.AnalysisResult | null {
-    const fn = this.inner.getMetadataForFile ?? this.inner.get_metadata_for_file;
-    if (!fn) {
-      throw new Error('WasmInner does not support getMetadataForFile');
-    }
-    const res = fn.call(this.inner, filePath);
+    const res = this.inner.get_metadata_for_file(filePath);
     return res ? (JSON.parse(res) as nga.AnalysisResult) : null;
   }
 
   getFileContentSync(filePath: string): string {
-    const fn = this.inner.getFileContent ?? this.inner.get_file_content;
-    if (!fn) {
-      throw new Error('WasmInner does not support getFileContent');
-    }
-    return fn.call(this.inner, filePath);
+    return this.inner.get_file_content(filePath);
   }
 
   getTsFileForTemplateSync(templatePath: string): nga.TemplateUsage[] | null {
-    const fn = this.inner.getTsFileForTemplate ?? this.inner.get_ts_file_for_template;
-    if (!fn) {
-      throw new Error('WasmInner does not support getTsFileForTemplate');
-    }
-    const res = fn.call(this.inner, templatePath);
+    const res = this.inner.get_ts_file_for_template(templatePath);
     return res ? (JSON.parse(res) as nga.TemplateUsage[]) : null;
   }
 
-  close(): void {}
+  close(): void {
+    for (const id of [...this.streams.keys()]) {
+      this.releaseStream(id);
+    }
+  }
 }

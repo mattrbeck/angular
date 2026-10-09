@@ -18,6 +18,8 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
 } from '@angular/compiler';
 
+import {ErrorCode} from '@angular/compiler-cli/private/hybrid_analysis';
+
 import {Diagnostic} from './diagnostic.js';
 
 const REGISTRY = new DomElementSchemaRegistry();
@@ -64,7 +66,7 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
       this._diagnostics.push({
         typeCheckId: id,
         category: OutOfBandDiagnosticCategory.Error,
-        code: 8001,
+        code: Math.abs(ErrorCode.SCHEMA_INVALID_ELEMENT),
         message: errorMsg,
         start: sourceSpanForDiagnostics.start.offset,
         end: sourceSpanForDiagnostics.end.offset,
@@ -73,13 +75,26 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
   }
 
   checkTemplateElementProperty(
-    id: string,
+    id: TypeCheckId,
     tagName: string,
     name: string,
     span: ParseSourceSpan,
     schemas: SchemaMetadata[],
     hostIsStandalone: boolean,
   ): void {
+    const report = REGISTRY.validateProperty(name);
+    if (report.error) {
+      this._diagnostics.push({
+        typeCheckId: id,
+        category: OutOfBandDiagnosticCategory.Error,
+        code: Math.abs(ErrorCode.SCHEMA_INVALID_ATTRIBUTE),
+        message: report.msg!,
+        start: span.start.offset,
+        end: span.end.offset,
+      });
+      return;
+    }
+
     if (!REGISTRY.hasProperty(tagName, name, schemas)) {
       const decorator = hostIsStandalone ? '@Component' : '@NgModule';
       const schemasStr = `'${decorator}.schemas'`;
@@ -102,9 +117,9 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
       }
 
       this._diagnostics.push({
-        typeCheckId: id as TypeCheckId,
+        typeCheckId: id,
         category: OutOfBandDiagnosticCategory.Error,
-        code: 8002,
+        code: Math.abs(ErrorCode.SCHEMA_INVALID_ATTRIBUTE),
         message: errorMsg,
         start: span.start.offset,
         end: span.end.offset,
@@ -113,12 +128,26 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
   }
 
   checkHostElementProperty(
-    id: string,
+    id: TypeCheckId,
     element: TmplAstHostElement,
     name: string,
     span: ParseSourceSpan,
     schemas: SchemaMetadata[],
   ): void {
+    const report = REGISTRY.validateProperty(name);
+    if (report.error) {
+      this._diagnostics.push({
+        typeCheckId: id,
+        category: OutOfBandDiagnosticCategory.Error,
+        code: Math.abs(ErrorCode.SCHEMA_INVALID_ATTRIBUTE),
+        message: report.msg!,
+        start: span.start.offset,
+        end: span.end.offset,
+        source: 'host',
+      });
+      return;
+    }
+
     for (const tagName of element.tagNames) {
       if (REGISTRY.hasProperty(tagName, name, schemas)) {
         continue;
@@ -126,12 +155,13 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
 
       const errorMessage = `Can't bind to '${name}' since it isn't a known property of '${tagName}'.`;
       this._diagnostics.push({
-        typeCheckId: id as TypeCheckId,
+        typeCheckId: id,
         category: OutOfBandDiagnosticCategory.Error,
-        code: 8002,
+        code: Math.abs(ErrorCode.SCHEMA_INVALID_ATTRIBUTE),
         message: errorMessage,
         start: span.start.offset,
         end: span.end.offset,
+        source: 'host',
       });
       break;
     }
@@ -181,9 +211,9 @@ export class RegistryDomSchemaChecker implements DomSchemaChecker<Diagnostic> {
       `\n3. To disable this check entirely, set 'strictUnclaimedEventNames' to false or remove it from the compiler options.`;
 
     this._diagnostics.push({
-      typeCheckId: id as TypeCheckId,
+      typeCheckId: id,
       category: OutOfBandDiagnosticCategory.Error,
-      code: 8030,
+      code: Math.abs(ErrorCode.UNCLAIMED_EVENT_BINDING),
       message: errorMsg,
       start: span.start.offset,
       end: span.end.offset,

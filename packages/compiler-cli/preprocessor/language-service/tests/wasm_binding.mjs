@@ -13,26 +13,23 @@ import fsSync from 'node:fs';
 export const WASM_BUILD_TARGET = '//packages/compiler-cli/preprocessor/ng-analyze:wasm';
 
 /**
- * Ensures the analysis engine is reachable by the test process and anything it spawns.
- *
- * The engine is the Bazel-built wasm binding. The analyzer loader does not know about
- * `dist/bin`, so we resolve the binding here and publish it through the loader's
- * `NG_EXP_COMPILER_WASM_BINDING` override. Child processes (e.g. the bundled LSP server)
- * inherit the environment, so this only needs to happen once in the test entrypoint.
- *
- * Throws when no binding can be found, so the suite fails fast instead of reporting
- * every spec as a `null` result.
+ * Fail-fast check that verifies the Bazel-built wasm binding exists before running tests
+ * and pins `NG_EXP_COMPILER_WASM_BINDING` for the test process and any child processes it spawns.
  */
 export function ensureWasmBinding(repoRoot) {
-  if (process.env['NG_EXP_COMPILER_WASM_BINDING']) {
-    return process.env['NG_EXP_COMPILER_WASM_BINDING'];
+  const existing = process.env['NG_EXP_COMPILER_WASM_BINDING'] || process.env['NGP_WASM_BINDING'];
+  if (existing && fsSync.existsSync(existing)) {
+    process.env['NG_EXP_COMPILER_WASM_BINDING'] = existing;
+    return existing;
   }
+  const rel = 'packages/compiler-cli/preprocessor/ng-analyze/ng_analyze_wasm/ng_analyze_wasm.js';
+  const runfiles = process.env['JS_BINARY__RUNFILES'] || process.env['RUNFILES_DIR'];
+  const candidates = [
+    ...(runfiles ? [path.join(runfiles, '_main', rel), path.join(runfiles, 'angular', rel)] : []),
+    path.join(repoRoot, 'dist/bin', rel),
+  ];
   const wasmBinding =
-    process.env['NGP_WASM_BINDING'] ||
-    path.join(
-      repoRoot,
-      'dist/bin/packages/compiler-cli/preprocessor/ng-analyze/ng_analyze_wasm/ng_analyze_wasm.js',
-    );
+    candidates.find((c) => fsSync.existsSync(c)) ?? candidates[candidates.length - 1];
   if (!fsSync.existsSync(wasmBinding)) {
     throw new Error(
       `Could not find the ng-analyze wasm binding at ${wasmBinding}.\n` +

@@ -27,7 +27,6 @@ import {
 import {
   AbsoluteFsPath,
   DeclarationNode,
-  DirectiveSymbol,
   isExternalResource,
   NgCompiler,
   TemplateTypeChecker,
@@ -323,11 +322,9 @@ export function makeElementSelector(element: TmplAstElement | TmplAstTemplate): 
  * @param directives The list of directives to match against.
  * @returns The list of directives matching the tag name via the strategy described above.
  */
-export function getDirectiveMatchesForAttribute(
-  name: string,
-  hostNode: TmplAstTemplate | TmplAstElement,
-  directives: DirectiveSymbol[],
-): Set<DirectiveSymbol> {
+export function getDirectiveMatchesForAttribute<
+  T extends {selector: string | null; tcbLocation?: {positionInFile: number}},
+>(name: string, hostNode: TmplAstTemplate | TmplAstElement, directives: T[]): Set<T> {
   const attributes = getAttributes(hostNode);
   const allAttrs = attributes.map(toAttributeCssSelector);
   const allDirectiveMatches = getDirectiveMatchesForSelector(

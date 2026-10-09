@@ -10,10 +10,12 @@ import * as path from 'path';
 import * as fs from 'node:fs/promises';
 import * as cp from 'child_process';
 import {HybridCompiler} from '../../src/hybrid_compiler.js';
-import {NapiAnalyzer} from '../../src/analyzer_napi.js';
+import {createAnalyzer} from '../../api.js';
+import {FileUpdateType} from '../../src/types.js';
 import {LanguageService} from '../src/language_service';
 import {buildTypeCheckingConfig} from '../../src/tcb';
 import {TsGoFacade} from '../src/facade';
+import {TestFileManager} from './test_file_manager';
 import {TextDocument} from 'vscode-languageserver-textdocument';
 import * as rpc from 'vscode-jsonrpc/node';
 import type {NgpCompilerOptions} from '../../src/compiler_options.js';
@@ -288,9 +290,8 @@ export class TestEnv {
     },
   ): Promise<LanguageService> {
     const tsconfigPath = path.join(this.fileManager.getWorkspacePath(), 'tsconfig.json');
-    const analyzer = await NapiAnalyzer.create(tsconfigPath, {
+    const analyzer = await createAnalyzer(tsconfigPath, {
       nodeModulesPathOverride: path.resolve(__dirname, '../../node_modules'),
-      ngAnalyzeDir: path.resolve(__dirname, '../../ng-analyze'),
     });
     this.compiler = new HybridCompiler(analyzer, {
       tcbConfig: buildTypeCheckingConfig(options, true),
@@ -394,7 +395,7 @@ export class TestEnv {
       await this.closeFile(uri);
     }
     this.openedFiles = [];
-    this.compiler = undefined;
+    this.compiler = null;
     await this.fileManager.cleanup();
   }
 
@@ -454,10 +455,11 @@ export function expectContain(
   expect(completions).toBeDefined();
   for (const name of names) {
     const found = completions!.items.some((e) => e.label === name && matchesKind(e.kind, kind));
-    expect(
-      found,
-      `Expected completions to contain entry "${name}" of kind "${kind}", but entries were: ${JSON.stringify(completions!.items.map((e) => ({label: e.label, kind: e.kind})))}`,
-    ).toBe(true);
+    expect(found)
+      .withContext(
+        `Expected completions to contain entry "${name}" of kind "${kind}", but entries were: ${JSON.stringify(completions!.items.map((e) => ({label: e.label, kind: e.kind})))}`,
+      )
+      .toBe(true);
   }
 }
 
@@ -517,10 +519,9 @@ export function expectContainInsertText(
     const found = completions!.items.some(
       (e) => (e.insertText === insertText || e.label === insertText) && matchesKind(e.kind, kind),
     );
-    expect(
-      found,
-      `Expected completions to contain insertText "${insertText}" of kind "${kind}"`,
-    ).toBe(true);
+    expect(found)
+      .withContext(`Expected completions to contain insertText "${insertText}" of kind "${kind}"`)
+      .toBe(true);
   }
 }
 
@@ -537,10 +538,11 @@ export function expectContainInsertTextWithSnippet(
         matchesKind(e.kind, kind) &&
         e.insertTextFormat === InsertTextFormat.Snippet,
     );
-    expect(
-      found,
-      `Expected completions to contain snippet insertText "${insertText}" of kind "${kind}"`,
-    ).toBe(true);
+    expect(found)
+      .withContext(
+        `Expected completions to contain snippet insertText "${insertText}" of kind "${kind}"`,
+      )
+      .toBe(true);
   }
 }
 
@@ -557,10 +559,11 @@ export function expectDoesNotContainInsertTextWithSnippet(
         matchesKind(e.kind, kind) &&
         e.insertTextFormat === InsertTextFormat.Snippet,
     );
-    expect(
-      found,
-      `Expected completions NOT to contain snippet insertText "${insertText}" of kind "${kind}"`,
-    ).toBe(false);
+    expect(found)
+      .withContext(
+        `Expected completions NOT to contain snippet insertText "${insertText}" of kind "${kind}"`,
+      )
+      .toBe(false);
   }
 }
 

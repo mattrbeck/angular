@@ -16,6 +16,7 @@ function _tcb1(this: i0.LabelsPanel) {
 
 /* Diagnostics:
  - (585, 590) No pipe found with name 'async'.
+To fix this, import the "AsyncPipe" class from "@angular/common" and add it to the "imports" array of the module declaring the component.
 */
 
 ```
@@ -244,7 +245,7 @@ export class PipeModule {
       "filePath": "/labels-panel.ts",
       "category": "error",
       "code": 8004,
-      "messageText": "No pipe found with name 'async'.",
+      "messageText": "No pipe found with name 'async'.\nTo fix this, import the \"AsyncPipe\" class from \"@angular/common\" and add it to the \"imports\" array of the module declaring the component.",
       "span": {
         "start": 585,
         "end": 590

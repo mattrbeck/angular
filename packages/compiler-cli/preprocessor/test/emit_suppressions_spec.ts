@@ -21,11 +21,10 @@
  */
 
 import * as fs from 'node:fs/promises';
-import * as fsSync from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'path';
 import ts from 'typescript';
-import {runPipeline, TestFile} from './utils.js';
+import {resolvePackagePath, runPipeline, TestFile} from './utils.js';
 
 const TSCONFIG = JSON.stringify({
   compilerOptions: {
@@ -89,31 +88,6 @@ async function emitUnformatted(source: string): Promise<string> {
   return emitted.content;
 }
 
-function resolveCorePackagePath(): string {
-  const runfilesDir = process.env['JS_BINARY__RUNFILES'] || process.env['RUNFILES_DIR'];
-  if (runfilesDir) {
-    const candidates = [
-      path.join(runfilesDir, '_main/packages/core/npm_package'),
-      path.join(runfilesDir, 'angular/packages/core/npm_package'),
-    ];
-    for (const c of candidates) {
-      if (fsSync.existsSync(c)) {
-        return c;
-      }
-    }
-  }
-  const relativeCandidates = [
-    path.resolve(process.cwd(), 'dist/bin/packages/core/npm_package'),
-    path.resolve(process.cwd(), 'packages/core'),
-  ];
-  for (const c of relativeCandidates) {
-    if (fsSync.existsSync(c)) {
-      return c;
-    }
-  }
-  return path.resolve(process.cwd(), 'packages/core');
-}
-
 /** Type-checks `content` as a standalone program resolving against the repo's `@angular/core`. */
 async function typeCheck(content: string): Promise<string[]> {
   const tmpRoot = process.env['TEST_TMPDIR'] || os.tmpdir();
@@ -122,7 +96,7 @@ async function typeCheck(content: string): Promise<string[]> {
     const file = path.join(dir, 'untypable_transform.ts');
     await fs.writeFile(file, content);
 
-    const corePkgPath = resolveCorePackagePath();
+    const corePkgPath = resolvePackagePath('core') ?? path.resolve(process.cwd(), 'packages/core');
     const program = ts.createProgram([file], {
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.ESNext,

@@ -231,6 +231,8 @@ export class DefinitionBuilder {
 
         return result;
       }
+      default:
+        return null;
     }
   }
 }

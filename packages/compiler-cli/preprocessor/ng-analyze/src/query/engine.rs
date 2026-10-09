@@ -210,82 +210,27 @@ impl<Fs: ResourceResolverFs + Clone + 'static> QueryEngine<Fs> {
     }
 
     /// Synchronously drive `AnalyzeFileSemantic(path)` to completion.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn analyze_file_semantic_blocking(
         self: &Arc<Self>,
         path: impl AsRef<Path>,
     ) -> Arc<FileData> {
         let file_id = self.intern_path(path);
-        futures::executor::block_on(QueryContext::new(self.clone()).analyze_file_semantic(file_id))
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn analyze_file_semantic_blocking(
-        self: &Arc<Self>,
-        path: impl AsRef<Path>,
-    ) -> Arc<FileData> {
-        let file_id = self.intern_path(path);
-        let shared = self.query(QueryKey::AnalyzeFileSemantic(file_id));
-        loop {
-            if let Some(value) = shared.clone().now_or_never() {
-                return match &*value.value {
-                    QueryValue::Semantic(r) => r.clone(),
-                    _ => unreachable!("AnalyzeFileSemantic must yield Semantic"),
-                };
-            }
-            crate::compiler::analyzer::step_local_pool();
-        }
+        crate::block_on(QueryContext::new(self.clone()).analyze_file_semantic(file_id))
     }
 
     /// Synchronously drive [`QueryContext::declaring_export_names`] to completion.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn declaring_export_names_blocking(
         self: &Arc<Self>,
         file_data: &FileData,
     ) -> crate::analyzer::import_emit::DeclaringExportNames {
-        futures::executor::block_on(
-            QueryContext::new(self.clone()).declaring_export_names(file_data),
-        )
+        crate::block_on(QueryContext::new(self.clone()).declaring_export_names(file_data))
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub fn declaring_export_names_blocking(
-        self: &Arc<Self>,
-        file_data: &FileData,
-    ) -> crate::analyzer::import_emit::DeclaringExportNames {
-        let ctx = QueryContext::new(self.clone());
-        let mut fut = Box::pin(ctx.declaring_export_names(file_data));
-        loop {
-            if let Some(value) = (&mut fut).now_or_never() {
-                return value;
-            }
-            crate::compiler::analyzer::step_local_pool();
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn parse_file_by_id_blocking(
         self: &Arc<Self>,
         file_id: FileId,
     ) -> Arc<std::sync::Mutex<crate::ParsedFile>> {
-        futures::executor::block_on(QueryContext::new(self.clone()).parse_file(file_id))
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn parse_file_by_id_blocking(
-        self: &Arc<Self>,
-        file_id: FileId,
-    ) -> Arc<std::sync::Mutex<crate::ParsedFile>> {
-        let shared = self.query(QueryKey::ParseFile(file_id));
-        loop {
-            if let Some(value) = shared.clone().now_or_never() {
-                return match &*value.value {
-                    QueryValue::ParsedFile(r) => r.clone(),
-                    _ => unreachable!("ParseFile must yield ParsedFile"),
-                };
-            }
-            crate::compiler::analyzer::step_local_pool();
-        }
+        crate::block_on(QueryContext::new(self.clone()).parse_file(file_id))
     }
 
     pub fn parse_file_blocking(

@@ -28,21 +28,27 @@ import {
 
 import {makeElementSelector} from './utils.js';
 import {createInputPropertyMapping, createOutputPropertyMapping} from '../../src/tcb_adapter.js';
+import {
+  AttributeCompletionKind,
+  AsciiSortPriority,
+  getStructuralAttributes,
+  buildSnippet,
+} from '@angular/language-service/private';
 
-const REGISTRY = new DomElementSchemaRegistry();
+export {AttributeCompletionKind, AsciiSortPriority, getStructuralAttributes, buildSnippet};
 
 /**
- * Differentiates different kinds of `AttributeCompletion`s.
+ * In the `CssSelector` object, attributes are stored in an array of K/V pairs:
+ * `['attr1', 'value1', 'attr2', 'value2']`. This helper function iterates over the array in a
+ * cleaner way (`['attr1', 'value1']`, `['attr2', 'value2']`).
  */
-export enum AttributeCompletionKind {
-  DomAttribute,
-  DomProperty,
-  DomEvent,
-  DirectiveAttribute,
-  StructuralDirectiveAttribute,
-  DirectiveInput,
-  DirectiveOutput,
+export function* selectorAttributes(selector: CssSelector): Iterable<[string, string]> {
+  for (let i = 0; i < selector.attrs.length; i += 2) {
+    yield [selector.attrs[i], selector.attrs[i + 1]];
+  }
 }
+
+const REGISTRY = new DomElementSchemaRegistry();
 
 export interface DomAttributeCompletion {
   kind: AttributeCompletionKind.DomAttribute;
@@ -90,69 +96,6 @@ export type AttributeCompletion =
   | DirectiveInputCompletion
   | DirectiveOutputCompletion
   | DomEventCompletion;
-
-export enum AsciiSortPriority {
-  First = '!',
-  Second = '"',
-}
-
-function* selectorAttributes(selector: CssSelector): Iterable<[string, string]> {
-  for (let i = 0; i < selector.attrs.length; i += 2) {
-    yield [selector.attrs[i], selector.attrs[i + 1]];
-  }
-}
-
-export function getStructuralAttributes(meta: {
-  selector?: string | null;
-  inputs?: ClassPropertyMapping;
-}): string[] {
-  if (!meta.selector) {
-    return [];
-  }
-
-  const structuralAttributes: string[] = [];
-  const selectors = CssSelector.parse(meta.selector);
-  for (const selector of selectors) {
-    if (selector.element !== null && selector.element !== 'ng-template') {
-      continue;
-    }
-
-    const attributeSelectors = Array.from(selectorAttributes(selector));
-    if (!attributeSelectors.every(([_, attrValue]) => attrValue === '')) {
-      continue;
-    }
-
-    const attributes = attributeSelectors.map(([attrName, _]) => attrName);
-    const baseAttr = attributes.reduce(
-      (prev, curr) => (prev === null || curr.length < prev.length ? curr : prev),
-      null as string | null,
-    );
-    if (baseAttr === null) {
-      continue;
-    }
-
-    const isValid = (attr: string): boolean => {
-      if (attr === baseAttr) {
-        return true;
-      }
-      if (!attr.startsWith(baseAttr)) {
-        return false;
-      }
-      if (meta.inputs && !meta.inputs.hasBindingPropertyName(attr)) {
-        return false;
-      }
-      return true;
-    };
-
-    if (!attributes.every(isValid)) {
-      continue;
-    }
-
-    structuralAttributes.push(baseAttr);
-  }
-
-  return structuralAttributes;
-}
 
 function extractInputsAndOutputs(decl: any): {
   inputs: ClassPropertyMapping<TcbInputMapping>;
@@ -363,10 +306,6 @@ export function buildAttributeCompletionTable(
   }
 
   return table;
-}
-
-function buildSnippet(insertSnippet: true | undefined, text: string): string | undefined {
-  return insertSnippet ? `${text.replace(/\$/gi, '\\$')}="$1"` : undefined;
 }
 
 function createItem(

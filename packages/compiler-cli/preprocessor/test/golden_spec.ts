@@ -16,12 +16,12 @@
  */
 
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as path from 'path';
 import {
   parseMarkdownTestCase,
   runPipeline,
   compareOutputs,
-  pathExists,
   mergeGolden,
   writeMarkdownTestCase,
 } from './utils.js';
@@ -39,79 +39,80 @@ describe('Golden Tests', () => {
     return;
   }
 
+  const goldenRoot = resolveGoldenRoot();
+
   for (const testCase of testCases) {
     describe(testCase, () => {
-      const testDir = path.join(resolveGoldenRoot(), testCase);
+      const testDir = path.join(goldenRoot, testCase);
       const sourcePath = path.join(testDir, 'source.md');
       const goldenPath = path.join(testDir, 'golden.md');
       const goldenOptPath = path.join(testDir, 'golden.opt.md');
+      const hasGolden = fsSync.existsSync(goldenPath);
+      const hasGoldenOpt = fsSync.existsSync(goldenOptPath);
 
       // Standard mode test
-      it('standard mode', async () => {
-        const [hasGolden, hasGoldenOpt] = await Promise.all([
-          pathExists(goldenPath),
-          pathExists(goldenOptPath),
-        ]);
-        if (!hasGolden && (!isUpdating || hasGoldenOpt)) {
-          return;
-        }
+      if (hasGolden || (isUpdating && !hasGoldenOpt)) {
+        it('standard mode', async () => {
+          const [source, expected] = await Promise.all([
+            parseMarkdownTestCase(sourcePath),
+            hasGolden ? parseMarkdownTestCase(goldenPath) : Promise.resolve([]),
+          ]);
 
-        const [source, expected] = await Promise.all([
-          parseMarkdownTestCase(sourcePath),
-          hasGolden ? parseMarkdownTestCase(goldenPath) : Promise.resolve([]),
-        ]);
-
-        const errors: string[] = [];
-        const actual = await runPipeline(source, {
-          ...pipelineOptionsFor(testCase, 'standard'),
-          errors,
-        });
-
-        try {
-          compareOutputs(actual, expected);
-        } catch (e) {
-          if (isUpdating) {
-            const merged = await mergeGolden(actual, expected);
-            await fs.writeFile(goldenPath, writeMarkdownTestCase(merged));
-            // tslint:disable-next-line:no-console
-            console.log(`Updated ${goldenPath}`);
-          } else {
-            throw e;
+          const errors: string[] = [];
+          const actual = await runPipeline(source, {
+            ...pipelineOptionsFor(testCase, 'standard'),
+            errors,
+          });
+          if (expected.length > 0 && !testCase.endsWith('_unexported_declaration')) {
+            expect(errors).toEqual([]);
           }
-        }
-      });
+
+          try {
+            compareOutputs(actual, expected);
+          } catch (e) {
+            if (isUpdating) {
+              const merged = await mergeGolden(actual, expected);
+              await fs.writeFile(goldenPath, writeMarkdownTestCase(merged));
+              // tslint:disable-next-line:no-console
+              console.log(`Updated ${goldenPath}`);
+            } else {
+              throw e;
+            }
+          }
+        });
+      }
 
       // Optimize mode test
-      it('optimize mode', async () => {
-        const hasGoldenOpt = await pathExists(goldenOptPath);
-        if (!hasGoldenOpt) {
-          return;
-        }
+      if (hasGoldenOpt) {
+        it('optimize mode', async () => {
+          const [source, expected] = await Promise.all([
+            parseMarkdownTestCase(sourcePath),
+            parseMarkdownTestCase(goldenOptPath),
+          ]);
 
-        const [source, expected] = await Promise.all([
-          parseMarkdownTestCase(sourcePath),
-          parseMarkdownTestCase(goldenOptPath),
-        ]);
-
-        const errors: string[] = [];
-        const actual = await runPipeline(source, {
-          ...pipelineOptionsFor(testCase, 'optimize'),
-          errors,
-        });
-
-        try {
-          compareOutputs(actual, expected);
-        } catch (e) {
-          if (isUpdating) {
-            const merged = await mergeGolden(actual, expected);
-            await fs.writeFile(goldenOptPath, writeMarkdownTestCase(merged));
-            // tslint:disable-next-line:no-console
-            console.log(`Updated ${goldenOptPath}`);
-          } else {
-            throw e;
+          const errors: string[] = [];
+          const actual = await runPipeline(source, {
+            ...pipelineOptionsFor(testCase, 'optimize'),
+            errors,
+          });
+          if (expected.length > 0 && !testCase.endsWith('_unexported_declaration')) {
+            expect(errors).toEqual([]);
           }
-        }
-      });
+
+          try {
+            compareOutputs(actual, expected);
+          } catch (e) {
+            if (isUpdating) {
+              const merged = await mergeGolden(actual, expected);
+              await fs.writeFile(goldenOptPath, writeMarkdownTestCase(merged));
+              // tslint:disable-next-line:no-console
+              console.log(`Updated ${goldenOptPath}`);
+            } else {
+              throw e;
+            }
+          }
+        });
+      }
     });
   }
 });

@@ -6,11 +6,15 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import type {NgCompilerOptions} from '@angular/compiler-cli';
+
 /**
  * Mirrors `DiagnosticCategoryLabel` in `ngtsc/core/api/src/public_options.ts`. The string
  * values are what appears in a tsconfig, so they are interchangeable with the upstream enum.
  */
-export type DiagnosticCategoryLabel = 'warning' | 'error' | 'suppress';
+export type DiagnosticCategoryLabel =
+  | `${NonNullable<NonNullable<NgCompilerOptions['extendedDiagnostics']>['defaultCategory']>}`
+  | NonNullable<NonNullable<NgCompilerOptions['extendedDiagnostics']>['defaultCategory']>;
 
 /**
  * Mirrors `DiagnosticOptions['extendedDiagnostics']`. Upstream keys `checks` by
@@ -26,51 +30,37 @@ export interface ExtendedDiagnosticsOptions {
 }
 
 /**
+ * Strips the `[prop: string]: any` index signature from `NgCompilerOptions` so that
+ * `noPropertyAccessFromIndexSignature` does not flag property accesses with TS4111.
+ */
+type KnownNgCompilerOptions = {
+  [
+    K in keyof NgCompilerOptions as string extends K
+      ? never
+      : number extends K
+        ? never
+        : symbol extends K
+          ? never
+          : K
+  ]: NgCompilerOptions[K];
+};
+
+/**
  * The compiler options the preprocessor consumes: the Angular-specific options from a
  * tsconfig's merged `angularCompilerOptions` (as read by `@angular/compiler-cli`'s
  * `readConfiguration`), plus the few TypeScript `compilerOptions` that ngtsc also
  * reads from the same merged object.
  */
-export interface NgpCompilerOptions {
-  // Type-checking (`TypeCheckingOptions`).
-  strictTemplates?: boolean;
-  strictInputTypes?: boolean;
-  strictInputAccessModifiers?: boolean;
-  strictNullInputTypes?: boolean;
-  strictOutputEventTypes?: boolean;
-  strictDomEventTypes?: boolean;
-  strictSafeNavigationTypes?: boolean;
-  strictDomLocalRefTypes?: boolean;
-  strictAttributeTypes?: boolean;
-  strictContextGenerics?: boolean;
-  strictLiteralTypes?: boolean;
-  typeCheckHostBindings?: boolean;
-
+export interface NgpCompilerOptions extends Omit<KnownNgCompilerOptions, 'extendedDiagnostics'> {
   // Diagnostics (`DiagnosticOptions`).
   extendedDiagnostics?: ExtendedDiagnosticsOptions;
 
-  // Emit and Bazel/google3 (`BazelAndG3Options`, `InternalOptions`).
-  annotateForClosureCompiler?: boolean;
-  _experimentalAllowEmitDeclarationOnly?: boolean;
-  onlyPublishPublicTypingsForNgModules?: boolean;
-  workspaceName?: string;
-
-  // Compilation (`MiscOptions`, `TargetOptions`, `InternalOptions`).
-  legacyOptionalChaining?: boolean;
-  onlyExplicitDeferDependencyImports?: boolean;
-  enableTemplateSourceLocations?: boolean;
-  forbidOrphanComponents?: boolean;
+  // `@internal` options stripped from `@angular/compiler-cli` public `.d.ts` files
+  // and preprocessor-specific options.
   supportJitMode?: boolean;
   supportTestBed?: boolean;
-  preserveWhitespaces?: boolean;
+  externalRuntimeStyles?: boolean;
   _enableHmr?: boolean;
-
-  // i18n (`I18nOptions`).
-  enableI18nLegacyMessageIdFormat?: boolean;
-  i18nUseExternalIds?: boolean;
-  i18nNormalizeLineEndingsInICUs?: boolean;
-
-  // TypeScript `compilerOptions` that ngtsc reads off the same merged options object.
-  emitDeclarationOnly?: boolean;
-  rootDirs?: string[];
+  _enableSelectorless?: boolean;
+  workspaceName?: string;
 }

@@ -22,11 +22,16 @@ export {
   findFirstMatchingNode,
   ExpressionIdentifier,
   hasExpressionIdentifier,
+  readSpanComment,
+  hasIgnoreForDiagnosticsMarker,
 } from '../src/ngtsc/typecheck/src/comments';
 export {
   SymbolBuilder,
   SymbolBoundTarget,
   SymbolDirectiveMeta,
 } from '../src/ngtsc/typecheck/src/template_symbol_builder';
+export {generateTypeCtorDeclarationFn} from '../src/ngtsc/typecheck/src/type_constructor';
+export {analyzeTemplateForSelectorless} from '../src/ngtsc/annotations/component/src/selectorless';
+export {ErrorCode, ngErrorCode} from '../src/ngtsc/diagnostics';
 
 export * from '../src/ngtsc/indexer';

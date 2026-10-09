@@ -33,6 +33,8 @@ import {
   getSafePropertyAccessString,
 } from '@angular/compiler';
 
+import {ErrorCode} from '@angular/compiler-cli/private/hybrid_analysis';
+
 import * as nga from './types.js';
 import {PipeMeta} from './tcb.js';
 import {RawSource} from './output_ast_printer.js';
@@ -219,7 +221,7 @@ export function buildHostMetadata(
         failed = true;
         diagCtx.diagnostics.push({
           category: 1,
-          code: 5001,
+          code: Math.abs(ErrorCode.HOST_BINDING_PARSE_ERROR),
           messageText: errors.map((error: ParseError) => error.msg).join('\n'),
           filePath: diagCtx.filePath,
           span: getHostBindingErrorSpan(errors[0], diagCtx),
@@ -229,7 +231,7 @@ export function buildHostMetadata(
       failed = true;
       diagCtx.diagnostics.push({
         category: 1,
-        code: 5001,
+        code: Math.abs(ErrorCode.HOST_BINDING_PARSE_ERROR),
         messageText: e instanceof Error ? e.message : String(e),
         filePath: diagCtx.filePath,
         span: diagCtx.hostSpan,

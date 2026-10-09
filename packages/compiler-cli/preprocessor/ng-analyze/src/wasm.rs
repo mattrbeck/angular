@@ -3,41 +3,19 @@
 // WebAssembly (WASI/emnapi) does not support standard OS-level thread-parking/unparking primitives,
 // which causes standard executors like `futures::executor::block_on` to panic when driving futures.
 //
-// To prevent this, we conditionally compile a custom zero-dependency cooperative spin-yield executor
-// (`wasm_block_on`) for `wasm32` targets, and fallback to standard optimized `futures::executor::block_on`
-// for native NAPI platforms to allow native OS thread-parking optimizations.
-#[allow(unsafe_code)]
-pub fn wasm_block_on<F: std::future::Future>(mut future: F) -> F::Output {
-    use std::pin::Pin;
-    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-    // Create a no-op waker
-    fn dummy_clone(_: *const ()) -> RawWaker {
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-    fn dummy_wake(_: *const ()) {}
-    fn dummy_wake_by_ref(_: *const ()) {}
-    fn dummy_drop(_: *const ()) {}
-
-    static VTABLE: RawWakerVTable =
-        RawWakerVTable::new(dummy_clone, dummy_wake, dummy_wake_by_ref, dummy_drop);
-
-    // SAFETY: The static VTABLE consists only of valid, safe, zero-argument no-op functions
-    // that do not dereference the null pointer, satisfying all RawWakerVTable contract invariants.
-    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
-    let mut context = Context::from_waker(&waker);
-    // SAFETY: The future is pinned on the stack of this synchronous function and is guaranteed
-    // not to be moved before it is dropped at the end of this function call, satisfying all Pin invariants.
-    let mut future = unsafe { Pin::new_unchecked(&mut future) };
-
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(val) => return val,
-            Poll::Pending => {
-                std::thread::yield_now();
-            }
+// On single-threaded `wasm32`, blocking queries must resolve synchronously without yielding, so we
+// drive them with `futures::FutureExt::now_or_never()` and fallback to `futures::executor::block_on`
+// on native targets.
+pub fn wasm_block_on<F: std::future::Future>(fut: F) -> F::Output {
+    use futures::FutureExt;
+    let mut fut = Box::pin(fut);
+    for _ in 0..100_000 {
+        if let Some(val) = (&mut fut).now_or_never() {
+            return val;
         }
+        crate::compiler::analyzer::step_local_pool();
     }
+    panic!("wasm_block_on future did not resolve within 100,000 local pool steps");
 }
 
 use crate::compiler::analyzer::{get_local_spawner, step_local_pool};
@@ -144,21 +122,11 @@ impl WasmAnalyzer {
     }
 
     pub fn analyze_delta(&mut self) -> Result<u32, String> {
-        let rx = self.analyzer.analyze_delta_core(get_local_spawner())?;
-        let id = self.next_id;
-        self.next_id += 1;
-        self.receivers.insert(id, rx);
-        Ok(id)
+        self.analyze()
     }
 
     pub fn analyze_optimized_delta(&mut self) -> Result<u32, String> {
-        let rx = self
-            .analyzer
-            .analyze_optimized_delta_core(get_local_spawner())?;
-        let id = self.next_id;
-        self.next_id += 1;
-        self.receivers.insert(id, rx);
-        Ok(id)
+        self.analyze_optimized()
     }
 
     /// Releases the stream `id` when its consumer stops reading before it ends.

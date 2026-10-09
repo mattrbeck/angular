@@ -80,7 +80,10 @@ import {
 } from './compiler-utils.js';
 import {ExpressionPrinter, RawSource} from './output_ast_printer.js';
 import MagicString from 'magic-string';
-import {analyzeTemplateForSelectorless} from './selectorless.js';
+import {
+  analyzeTemplateForSelectorless,
+  ErrorCode,
+} from '@angular/compiler-cli/private/hybrid_analysis';
 import {analyzeForeignComponentFeatures} from './foreign_component.js';
 import {lineNumberAtOffset} from './tcb_util.js';
 import type {IAnalyzer} from './hybrid_compiler.js';
@@ -565,7 +568,7 @@ export async function processFile(
           }
           fileDiagnostics.push({
             category: 1,
-            code: 5002,
+            code: ErrorCode.TEMPLATE_PARSE_ERROR,
             messageText: error.msg,
             ...templateDiagnosticLocation(component, filePath, {start, end}),
           });
@@ -619,7 +622,7 @@ export async function processFile(
           const span = component.templateUrl?.stringLiteralSpan ?? component.templateSpan;
           fileDiagnostics.push({
             category: 1,
-            code: 2008,
+            code: ErrorCode.COMPONENT_RESOURCE_NOT_FOUND,
             messageText: `Could not find stylesheet file '${styleUrl}' linked from the template.`,
             filePath,
             span: span ? {start: span.start, end: span.end} : undefined,
@@ -739,7 +742,7 @@ export async function processFile(
           if (blockName === null) {
             fileDiagnostics.push({
               category: 1, // Error
-              code: 11100,
+              code: ErrorCode.DEFER_BLOCK_MISSING_NAME_PARAMETER,
               messageText: `@defer block must specify a 'name' parameter (e.g. '@defer (name blockName)') when 'deferredImports' is defined.`,
               filePath,
               span: block.sourceSpan
@@ -749,7 +752,7 @@ export async function processFile(
           } else if (!component?.deferredImportsByBlock?.[blockName]) {
             fileDiagnostics.push({
               category: 1, // Error
-              code: 11101,
+              code: ErrorCode.DEFER_BLOCK_UNKNOWN_NAME_PARAMETER,
               messageText: `The 'name' parameter references block '${blockName}' which is missing from '@Component.deferredImports'.`,
               filePath,
               span: block.sourceSpan
@@ -761,7 +764,7 @@ export async function processFile(
           if (blockName !== null) {
             fileDiagnostics.push({
               category: 1, // Error
-              code: 11102,
+              code: ErrorCode.DEFER_BLOCK_INVALID_NAME_PARAMETER,
               messageText: `The 'name' parameter can only be used when '@Component.deferredImports' is defined.`,
               filePath,
               span: block.sourceSpan
@@ -1646,7 +1649,9 @@ export async function processFile(
         category: diag.category === OutOfBandDiagnosticCategory.Warning ? 0 : 1,
         code: diag.code ?? 8000,
         messageText: diag.message,
-        ...(component ? templateDiagnosticLocation(component, filePath, span) : {filePath, span}),
+        ...(component && diag.source !== 'host'
+          ? templateDiagnosticLocation(component, filePath, span)
+          : {filePath, span}),
       });
     }
   }
@@ -2229,7 +2234,7 @@ function compileNgModuleDef(
           if (diagnostics && filePath) {
             diagnostics.push({
               category: 1,
-              code: 11003,
+              code: ErrorCode.LOCAL_COMPILATION_UNSUPPORTED_EXPRESSION,
               messageText: `In experimental declaration-only emission mode, this expression is not supported in NgModule imports/exports as it cannot be referenced with 'typeof'. Use a direct reference or a supported call.`,
               filePath,
               span: el.span ? {start: el.span.start, end: el.span.end} : undefined,
@@ -2581,7 +2586,7 @@ function reportEagerlyImportedDeferredDependencies(
     }
     diagnostics.push({
       category: 1, // Error
-      code: 8014, // DEFERRED_DEPENDENCY_IMPORTED_EAGERLY
+      code: ErrorCode.DEFERRED_DEPENDENCY_IMPORTED_EAGERLY,
       messageText:
         `This import contains symbols that are used both inside and outside of the ` +
         `\`@Component.deferredImports\` fields in the file. This renders all these ` +

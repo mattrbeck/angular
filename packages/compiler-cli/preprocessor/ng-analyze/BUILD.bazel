@@ -5,37 +5,44 @@ load("//tools:defaults.bzl", "copy_to_bin")
 
 package(default_visibility = ["//visibility:public"])
 
+COMMON_SRCS = glob(
+    include = ["src/**/*.rs"],
+    exclude = ["src/main.rs"],
+)
+
+COMMON_PROC_MACRO_DEPS = [
+    "@crates//:oxc-miette-derive",
+]
+
+COMMON_DEPS = [
+    "@crates//:futures",
+    "@crates//:glob",
+    "@crates//:json-strip-comments",
+    "@crates//:oxc_allocator",
+    "@crates//:oxc_ast",
+    "@crates//:oxc_ast_visit",
+    "@crates//:oxc_diagnostics",
+    "@crates//:oxc_parser",
+    "@crates//:oxc_resolver",
+    "@crates//:oxc_semantic",
+    "@crates//:oxc_span",
+    "@crates//:oxc_syntax",
+    "@crates//:pathdiff",
+    "@crates//:regex",
+    "@crates//:self_cell",
+    "@crates//:serde",
+    "@crates//:serde_json",
+]
+
 rust_shared_library(
     name = "ng_analyze_wasm_lib",
-    srcs = glob(
-        include = ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
-    ),
+    srcs = COMMON_SRCS,
     crate_name = "ng_analyze",
     edition = "2021",
-    proc_macro_deps = [
-        "@crates//:oxc-miette-derive",
-    ],
+    proc_macro_deps = COMMON_PROC_MACRO_DEPS,
     target_compatible_with = ["@platforms//cpu:wasm32"],
-    deps = [
-        "@crates//:futures",
-        "@crates//:glob",
+    deps = COMMON_DEPS + [
         "@crates//:js-sys",
-        "@crates//:json-strip-comments",
-        "@crates//:oxc_allocator",
-        "@crates//:oxc_ast",
-        "@crates//:oxc_ast_visit",
-        "@crates//:oxc_diagnostics",
-        "@crates//:oxc_parser",
-        "@crates//:oxc_resolver",
-        "@crates//:oxc_semantic",
-        "@crates//:oxc_span",
-        "@crates//:oxc_syntax",
-        "@crates//:pathdiff",
-        "@crates//:regex",
-        "@crates//:self_cell",
-        "@crates//:serde",
-        "@crates//:serde_json",
         "@crates//:wasm-bindgen",
     ],
 )
@@ -61,33 +68,10 @@ js_library(
 
 rust_library(
     name = "ng_analyze",
-    srcs = glob(
-        include = ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
-    ),
+    srcs = COMMON_SRCS,
     edition = "2021",
-    proc_macro_deps = [
-        "@crates//:oxc-miette-derive",
-    ],
-    deps = [
-        "@crates//:futures",
-        "@crates//:glob",
-        "@crates//:json-strip-comments",
-        "@crates//:oxc_allocator",
-        "@crates//:oxc_ast",
-        "@crates//:oxc_ast_visit",
-        "@crates//:oxc_diagnostics",
-        "@crates//:oxc_parser",
-        "@crates//:oxc_resolver",
-        "@crates//:oxc_semantic",
-        "@crates//:oxc_span",
-        "@crates//:oxc_syntax",
-        "@crates//:pathdiff",
-        "@crates//:regex",
-        "@crates//:self_cell",
-        "@crates//:serde",
-        "@crates//:serde_json",
-    ],
+    proc_macro_deps = COMMON_PROC_MACRO_DEPS,
+    deps = COMMON_DEPS,
 )
 
 rust_binary(

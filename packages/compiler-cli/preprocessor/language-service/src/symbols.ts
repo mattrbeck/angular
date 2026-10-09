@@ -6,19 +6,4 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
-export enum SymbolKind {
-  Input,
-  Output,
-  Binding,
-  Reference,
-  Variable,
-  Directive,
-  Element,
-  Template,
-  Expression,
-  DomBinding,
-  Pipe,
-  LetDeclaration,
-  SelectorlessComponent,
-  SelectorlessDirective,
-}
+export {SymbolKind} from '@angular/compiler-cli/private/hybrid_analysis';

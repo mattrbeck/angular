@@ -9,8 +9,6 @@
 import {
   BoundTarget,
   generateTypeCheckBlock,
-  isUnsafeObjectKey,
-  R3Identifiers,
   SchemaMetadata,
   TcbComponentMetadata,
   TcbDirectiveMetadata,
@@ -20,13 +18,13 @@ import {
   TcbReferenceKey,
   TcbReferenceMetadata,
   TcbTypeCheckBlockMetadata,
-  TcbTypeParameter,
   TmplAstHostElement,
   TmplAstNode,
   TypeCheckId,
   TypeCheckingConfig,
   TypeCtorMetadata,
 } from '@angular/compiler';
+import {generateTypeCtorDeclarationFn} from '@angular/compiler-cli/private/hybrid_analysis';
 import type {NgpCompilerOptions} from './compiler_options.js';
 import {Diagnostic} from './diagnostic.js';
 import {RegistryDomSchemaChecker} from './dom_schema_checker.js';
@@ -160,82 +158,42 @@ export function buildTypeCheckingConfig(
 ): NgpTypeCheckingConfig {
   const strictTemplates = options.strictTemplates !== false;
 
-  let typeCheckingConfig: NgpTypeCheckingConfig;
-  if (strictTemplates) {
-    typeCheckingConfig = {
-      applyTemplateContextGuards: true,
-      checkTemplateBodies: true,
-      alwaysCheckSchemaInTemplateBodies: true,
-      checkTypeOfInputBindings: true,
-      honorAccessModifiersForInputBindings: false,
-      checkControlFlowBodies: true,
-      strictNullInputBindings: true,
-      checkTypeOfAttributes: true,
-      checkTypeOfDomBindings: false,
-      checkTypeOfOutputEvents: true,
-      checkTypeOfAnimationEvents: true,
-      checkTypeOfDomEvents: true,
-      checkTypeOfDomReferences: true,
-      checkTypeOfNonDomReferences: true,
-      checkTypeOfPipes: true,
-      strictSafeNavigationTypes: true,
-      useContextGenericType: true,
-      strictLiteralTypes: true,
-      enableTemplateTypeChecker,
-      useInlineTypeConstructors: false,
-      controlFlowPreventingContentProjection:
-        options.extendedDiagnostics?.checks?.controlFlowPreventingContentProjection ??
-        options.extendedDiagnostics?.defaultCategory ??
-        'warning',
-      unusedStandaloneImports:
-        options.extendedDiagnostics?.checks?.unusedStandaloneImports ??
-        options.extendedDiagnostics?.defaultCategory ??
-        'warning',
-      // These are actually set via version check in ngtsc (ngtsc/core/src/compiler.ts).
-      // Since we don't have any of that here we just default to true.
-      allowSignalsInTwoWayBindings: true,
-      allowDomEventAssertion: true,
-      checkUnclaimedEventNames: false,
-      checkUnknownElements: false,
-    };
-  } else {
-    typeCheckingConfig = {
-      applyTemplateContextGuards: false,
-      checkTemplateBodies: false,
-      checkControlFlowBodies: false,
-      alwaysCheckSchemaInTemplateBodies: !!options.annotateForClosureCompiler,
-      checkTypeOfInputBindings: false,
-      strictNullInputBindings: false,
-      honorAccessModifiersForInputBindings: false,
-      checkTypeOfAttributes: false,
-      checkTypeOfDomBindings: false,
-      checkTypeOfOutputEvents: false,
-      checkTypeOfAnimationEvents: false,
-      checkTypeOfDomEvents: false,
-      checkTypeOfDomReferences: false,
-      checkTypeOfNonDomReferences: false,
-      checkTypeOfPipes: false,
-      strictSafeNavigationTypes: false,
-      useContextGenericType: false,
-      strictLiteralTypes: false,
-      enableTemplateTypeChecker,
-      useInlineTypeConstructors: false,
-      controlFlowPreventingContentProjection:
-        options.extendedDiagnostics?.checks?.controlFlowPreventingContentProjection ??
-        options.extendedDiagnostics?.defaultCategory ??
-        'warning',
-      unusedStandaloneImports:
-        options.extendedDiagnostics?.checks?.unusedStandaloneImports ??
-        options.extendedDiagnostics?.defaultCategory ??
-        'warning',
-      // These are actually set via version check in ngtsc (ngtsc/core/src/compiler.ts).
-      // Since we don't have any of that here we just default to true.
-      allowSignalsInTwoWayBindings: true,
-      allowDomEventAssertion: true,
-      checkUnclaimedEventNames: false,
-      checkUnknownElements: false,
-    };
-  }
+  const typeCheckingConfig: NgpTypeCheckingConfig = {
+    applyTemplateContextGuards: strictTemplates,
+    checkTemplateBodies: strictTemplates,
+    alwaysCheckSchemaInTemplateBodies: strictTemplates || !!options.annotateForClosureCompiler,
+    checkTypeOfInputBindings: strictTemplates,
+    honorAccessModifiersForInputBindings: false,
+    checkControlFlowBodies: strictTemplates,
+    strictNullInputBindings: strictTemplates,
+    checkTypeOfAttributes: strictTemplates,
+    checkTypeOfDomBindings: false,
+    checkTypeOfOutputEvents: strictTemplates,
+    checkTypeOfAnimationEvents: strictTemplates,
+    checkTypeOfDomEvents: strictTemplates,
+    checkTypeOfDomReferences: strictTemplates,
+    checkTypeOfNonDomReferences: strictTemplates,
+    checkTypeOfPipes: strictTemplates,
+    strictSafeNavigationTypes: strictTemplates,
+    useContextGenericType: strictTemplates,
+    strictLiteralTypes: strictTemplates,
+    enableTemplateTypeChecker,
+    useInlineTypeConstructors: false,
+    controlFlowPreventingContentProjection:
+      options.extendedDiagnostics?.checks?.controlFlowPreventingContentProjection ??
+      options.extendedDiagnostics?.defaultCategory ??
+      'warning',
+    unusedStandaloneImports:
+      options.extendedDiagnostics?.checks?.unusedStandaloneImports ??
+      options.extendedDiagnostics?.defaultCategory ??
+      'warning',
+    // These are actually set via version check in ngtsc (ngtsc/core/src/compiler.ts).
+    // Since we don't have any of that here we just default to true.
+    allowSignalsInTwoWayBindings: true,
+    allowDomEventAssertion: true,
+    checkUnclaimedEventNames: false,
+    checkUnknownElements: false,
+  };
 
   if (options.strictInputTypes !== undefined) {
     typeCheckingConfig.checkTypeOfInputBindings = options.strictInputTypes;
@@ -268,6 +226,12 @@ export function buildTypeCheckingConfig(
   }
   if (options.strictLiteralTypes !== undefined) {
     typeCheckingConfig.strictLiteralTypes = options.strictLiteralTypes;
+  }
+  if (options.strictUnclaimedEventNames !== undefined) {
+    typeCheckingConfig.checkUnclaimedEventNames = options.strictUnclaimedEventNames;
+  }
+  if (options.strictUnknownElements !== undefined) {
+    typeCheckingConfig.checkUnknownElements = options.strictUnknownElements;
   }
   typeCheckingConfig.typeCheckHostBindings = options.typeCheckHostBindings ?? true;
 
@@ -349,103 +313,6 @@ export function qualifyTypeParameters(
       representationWithDefault,
     };
   });
-}
-
-function generateGenericArgs(typeParameters: ReadonlyArray<TcbTypeParameter> | undefined): string {
-  if (typeParameters === undefined || typeParameters.length === 0) {
-    return '';
-  }
-  return `<${typeParameters.map((param) => param.name).join(', ')}>`;
-}
-
-function typeParametersWithDefaultTypes(
-  params: ReadonlyArray<TcbTypeParameter> | undefined,
-): string {
-  if (params === undefined || params.length === 0) {
-    return '';
-  }
-  return `<${params.map((param) => param.representationWithDefault).join(', ')}>`;
-}
-
-function constructTypeCtorParameter(
-  env: TcbEnvironment,
-  meta: TypeCtorMetadata,
-  typeRef: string,
-  typeRefWithGenerics: string,
-): string {
-  let initType: string | null = null;
-
-  const plainKeys: string[] = [];
-  const coercedKeys: string[] = [];
-  const signalInputKeys: string[] = [];
-
-  for (const {classPropertyName, transformType, isSignal} of meta.fields.inputs) {
-    if (isSignal) {
-      signalInputKeys.push(TcbExpr.quoteAndEscape(classPropertyName));
-    } else if (!meta.coercedInputFields.has(classPropertyName)) {
-      plainKeys.push(TcbExpr.quoteAndEscape(classPropertyName));
-    } else {
-      const propName = `ngAcceptInputType_${classPropertyName}`;
-      const isUnsafe = isUnsafeObjectKey(classPropertyName);
-      const access = isUnsafe ? `[${TcbExpr.quoteAndEscape(propName)}]` : `.${propName}`;
-      const coercionType =
-        transformType !== undefined ? transformType : `typeof ${typeRef}${access}`;
-
-      coercedKeys.push(
-        `${isUnsafe ? TcbExpr.quoteAndEscape(classPropertyName) : classPropertyName}: ${coercionType}`,
-      );
-    }
-  }
-
-  if (plainKeys.length > 0) {
-    initType = `Pick<${typeRefWithGenerics}, ${plainKeys.join(' | ')}>`;
-  }
-  if (coercedKeys.length > 0) {
-    let coercedLiteral = '{\n';
-    for (const key of coercedKeys) {
-      coercedLiteral += `${key};\n`;
-    }
-    coercedLiteral += '}';
-    initType = initType !== null ? `${initType} & ${coercedLiteral}` : coercedLiteral;
-  }
-  if (signalInputKeys.length > 0) {
-    const keyTypeUnion = signalInputKeys.join(' | ');
-
-    const unwrapRef = env.referenceExternalSymbol(
-      R3Identifiers.UnwrapDirectiveSignalInputs.moduleName,
-      R3Identifiers.UnwrapDirectiveSignalInputs.name,
-    );
-    const unwrapExpr = `${unwrapRef.print()}<${typeRefWithGenerics}, ${keyTypeUnion}>`;
-    initType = initType !== null ? `${initType} & ${unwrapExpr}` : unwrapExpr;
-  }
-
-  if (initType === null) {
-    initType = '{}';
-  }
-
-  return `init: ${initType}`;
-}
-
-export function generateTypeCtorDeclarationFn(
-  env: TcbEnvironment,
-  meta: TypeCtorMetadata,
-  nodeTypeRef: TcbExpr,
-  typeParams: TcbTypeParameter[] | undefined,
-): TcbExpr {
-  const typeArgs = generateGenericArgs(typeParams);
-  const typeRefWithGenerics = `${nodeTypeRef.print()}${typeArgs}`;
-  const initParam = constructTypeCtorParameter(env, meta, nodeTypeRef.print(), typeRefWithGenerics);
-  const typeParameters = typeParametersWithDefaultTypes(typeParams);
-  let source: string;
-
-  if (meta.body) {
-    const fnType = `${typeParameters}(${initParam}) => ${typeRefWithGenerics}`;
-    source = `const ${meta.fnName}: ${fnType} = null!`;
-  } else {
-    source = `declare function ${meta.fnName}${typeParameters}(${initParam}): ${typeRefWithGenerics}`;
-  }
-
-  return new TcbExpr(source);
 }
 
 export class TcbEnvironmentImpl implements TcbEnvironment {

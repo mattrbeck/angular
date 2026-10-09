@@ -35,10 +35,34 @@ import {
   type TcbDirectiveMetadata,
   type TypeCheckId,
 } from '@angular/compiler';
+import {ErrorCode} from '@angular/compiler-cli/private/hybrid_analysis';
 import {Diagnostic} from './diagnostic.js';
 
 export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecorder<Diagnostic> {
   private _diagnostics: Diagnostic[] = [];
+
+  /**
+   * Tracks which `BindingPipe` nodes have already been recorded as invalid, so only one diagnostic
+   * is ever produced per node.
+   */
+  private readonly recordedPipes = new Set<BindingPipe>();
+
+  /** Common pipes that can be suggested to users. */
+  private readonly pipeSuggestions = new Map<string, string>([
+    ['async', 'AsyncPipe'],
+    ['uppercase', 'UpperCasePipe'],
+    ['lowercase', 'LowerCasePipe'],
+    ['json', 'JsonPipe'],
+    ['slice', 'SlicePipe'],
+    ['number', 'DecimalPipe'],
+    ['percent', 'PercentPipe'],
+    ['titlecase', 'TitleCasePipe'],
+    ['currency', 'CurrencyPipe'],
+    ['date', 'DatePipe'],
+    ['i18nPlural', 'I18nPluralPipe'],
+    ['i18nSelect', 'I18nSelectPipe'],
+    ['keyvalue', 'KeyValuePipe'],
+  ]);
 
   get diagnostics(): ReadonlyArray<Diagnostic> {
     return this._diagnostics;
@@ -82,18 +106,40 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       `No directive found with exportAs '${ref.value.trim()}'.`,
       ref.valueSpan || ref.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8003,
+      Math.abs(ErrorCode.MISSING_REFERENCE_TARGET),
     );
   }
 
-  missingPipe(id: TypeCheckId, ast: BindingPipe) {
+  missingPipe(id: TypeCheckId, ast: BindingPipe, isStandalone?: boolean) {
+    if (this.recordedPipes.has(ast)) {
+      return;
+    }
+
+    let errorMsg = `No pipe found with name '${ast.name}'.`;
+
+    if (this.pipeSuggestions.has(ast.name)) {
+      const suggestedClassName = this.pipeSuggestions.get(ast.name)!;
+      const suggestedImport = '@angular/common';
+
+      if (isStandalone) {
+        errorMsg +=
+          `\nTo fix this, import the "${suggestedClassName}" class from "${suggestedImport}"` +
+          ` and add it to the "imports" array of the component.`;
+      } else {
+        errorMsg +=
+          `\nTo fix this, import the "${suggestedClassName}" class from "${suggestedImport}"` +
+          ` and add it to the "imports" array of the module declaring the component.`;
+      }
+    }
+
     this.pushDiagnostic(
       id,
-      `No pipe found with name '${ast.name}'.`,
+      errorMsg,
       ast.nameSpan,
       OutOfBandDiagnosticCategory.Error,
-      8004,
+      Math.abs(ErrorCode.MISSING_PIPE),
     );
+    this.recordedPipes.add(ast);
   }
 
   deferredPipeUsedEagerly(
@@ -102,6 +148,10 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
     currentBlockName: string | null = null,
     declaredBlocks: string[] | null = null,
   ) {
+    if (this.recordedPipes.has(ast)) {
+      return;
+    }
+
     let errorMsg: string;
     if (currentBlockName !== null && declaredBlocks !== null && declaredBlocks.length > 0) {
       errorMsg =
@@ -116,7 +166,14 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `using the \`@Component.imports\` field.`;
     }
 
-    this.pushDiagnostic(id, errorMsg, ast.nameSpan, OutOfBandDiagnosticCategory.Error, 8012);
+    this.pushDiagnostic(
+      id,
+      errorMsg,
+      ast.nameSpan,
+      OutOfBandDiagnosticCategory.Error,
+      Math.abs(ErrorCode.DEFERRED_PIPE_USED_EAGERLY),
+    );
+    this.recordedPipes.add(ast);
   }
 
   deferredComponentUsedEagerly(
@@ -148,18 +205,24 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `import '${name}' using the \`@Component.imports\` field.`;
     }
 
-    const startSourceSpan = (element as any).startSourceSpan ?? element.sourceSpan;
+    const startSourceSpan = element.startSourceSpan ?? element.sourceSpan;
 
-    this.pushDiagnostic(id, errorMsg, startSourceSpan, OutOfBandDiagnosticCategory.Error, 8013);
+    this.pushDiagnostic(
+      id,
+      errorMsg,
+      startSourceSpan,
+      OutOfBandDiagnosticCategory.Error,
+      Math.abs(ErrorCode.DEFERRED_DIRECTIVE_USED_EAGERLY),
+    );
   }
 
   duplicateTemplateVar(id: TypeCheckId, variable: TmplAstVariable) {
     this.pushDiagnostic(
       id,
       `Cannot redeclare variable '${variable.name}' as it was previously declared elsewhere for the same template.`,
-      variable.keySpan,
+      variable.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8006,
+      Math.abs(ErrorCode.DUPLICATE_VARIABLE_DECLARATION),
     );
   }
 
@@ -185,7 +248,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `tsconfig.json for better type inference within this template.`,
       diagnosticVar.keySpan,
       OutOfBandDiagnosticCategory.Warning,
-      8104,
+      Math.abs(ErrorCode.SUGGEST_SUBOPTIMAL_TYPE_INFERENCE),
     );
   }
 
@@ -197,7 +260,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `Find more at https://angular.dev/guide/templates/two-way-binding`,
       input.keySpan,
       OutOfBandDiagnosticCategory.Error,
-      8007,
+      Math.abs(ErrorCode.SPLIT_TWO_WAY_BINDING),
     );
   }
 
@@ -210,34 +273,13 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
   ) {
     const aliasString = inputAliases.map((n) => `'${n}'`).join(', ');
     const type = isComponent ? 'component' : 'directive';
-    let name: string | null;
-    let span: ParseSourceSpan;
-
-    if (element instanceof TmplAstElement || element instanceof TmplAstDirective) {
-      name = element.name;
-    } else if (element instanceof TmplAstComponent) {
-      name = element.componentName;
-    } else {
-      name = null;
-    }
-
-    if (name === null) {
-      span = element.startSourceSpan;
-    } else {
-      // Only highlight the tag name since highlighting the entire start tag can be noisy.
-      const start = element.startSourceSpan.start.moveBy(1);
-      const end = element.startSourceSpan.end.moveBy(
-        start.offset + name.length - element.startSourceSpan.end.offset,
-      );
-      span = new ParseSourceSpan(start, end);
-    }
 
     this.pushDiagnostic(
       id,
       `Required input${inputAliases.length === 1 ? '' : 's'} ${aliasString} from ${type} ${directiveName} must be specified.`,
-      span,
+      this.getTagNameSpan(element),
       OutOfBandDiagnosticCategory.Error,
-      8008,
+      Math.abs(ErrorCode.MISSING_REQUIRED_INPUTS),
     );
   }
 
@@ -254,7 +296,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `Only ${messageVars} and properties on the containing component are available to this expression.`,
       access.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8009,
+      Math.abs(ErrorCode.ILLEGAL_FOR_LOOP_TRACK_ACCESS),
     );
   }
 
@@ -271,7 +313,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `Trigger cannot find reference. Make sure that the @defer block has a @placeholder with at least one root element node.`,
         trigger.sourceSpan,
         OutOfBandDiagnosticCategory.Error,
-        8010,
+        Math.abs(ErrorCode.INACCESSIBLE_DEFERRED_TRIGGER_ELEMENT),
       );
     } else {
       this.pushDiagnostic(
@@ -282,7 +324,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
           `a parent embedded view or the root view of the @placeholder block.`,
         trigger.sourceSpan,
         OutOfBandDiagnosticCategory.Error,
-        8010,
+        Math.abs(ErrorCode.INACCESSIBLE_DEFERRED_TRIGGER_ELEMENT),
       );
     }
   }
@@ -301,18 +343,29 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
     preservesWhitespaces: boolean,
   ) {
     const blockName = controlFlowNode?.nameSpan?.toString().trim() || 'block';
-    let msg =
-      `Node matches the "${selector}" slot of the "${componentName}" component, but will not be projected into the specific slot because the surrounding ${blockName} has more than one node at its root. To project the node in the right slot, you can:\n\n` +
-      `1. Wrap the content of the ${blockName} block in an <ng-container/> that matches the "${selector}" selector.\n` +
-      `2. Split the content of the ${blockName} block across multiple ${blockName} blocks such that each one only has a single projectable node at its root.\n` +
-      `3. Remove all content from the ${blockName} block, except for the node being projected.\n`;
+    const lines = [
+      `Node matches the "${selector}" slot of the "${componentName}" component, but will not be projected into the specific slot because the surrounding ${blockName} has more than one node at its root. To project the node in the right slot, you can:\n`,
+      `1. Wrap the content of the ${blockName} block in an <ng-container/> that matches the "${selector}" selector.`,
+      `2. Split the content of the ${blockName} block across multiple ${blockName} blocks such that each one only has a single projectable node at its root.`,
+      `3. Remove all content from the ${blockName} block, except for the node being projected.`,
+      '',
+    ];
     if (preservesWhitespaces) {
-      msg +=
-        '\nNote: the host component has `preserveWhitespaces: true` which may cause whitespace to affect content projection.\n';
+      lines.push(
+        'Note: the host component has `preserveWhitespaces: true` which may cause whitespace to affect content projection.',
+        '',
+      );
     }
-    msg +=
-      '\nThis check can be disabled using the `extendedDiagnostics.checks.controlFlowPreventingContentProjection = "suppress"` compiler option.';
-    this.pushDiagnostic(id, msg, node.startSourceSpan, category, 8011);
+    lines.push(
+      'This check can be disabled using the `extendedDiagnostics.checks.controlFlowPreventingContentProjection = "suppress"` compiler option.',
+    );
+    this.pushDiagnostic(
+      id,
+      lines.join('\n'),
+      node.startSourceSpan,
+      category,
+      Math.abs(ErrorCode.CONTROL_FLOW_PREVENTING_CONTENT_PROJECTION),
+    );
   }
 
   illegalWriteToLetDeclaration(id: TypeCheckId, node: AST, target: TmplAstLetDeclaration) {
@@ -321,7 +374,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       `Cannot assign to @let declaration '${target.name}'.`,
       node.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8015,
+      Math.abs(ErrorCode.ILLEGAL_LET_WRITE),
     );
   }
 
@@ -331,7 +384,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       `Cannot read @let declaration '${target.name}' before it has been defined.`,
       node.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8016,
+      Math.abs(ErrorCode.LET_USED_BEFORE_DEFINITION),
     );
   }
 
@@ -341,7 +394,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       `Cannot declare @let called '${decl.name}' as there is another symbol in the template with the same name.`,
       decl.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8017,
+      Math.abs(ErrorCode.CONFLICTING_LET_DECLARATION),
     );
   }
 
@@ -352,17 +405,17 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         `Selectorless references are only supported to classes or non-type import statements.`,
       node.startSourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8001,
+      Math.abs(ErrorCode.MISSING_NAMED_TEMPLATE_DEPENDENCY),
     );
   }
 
   incorrectTemplateDependencyType(id: TypeCheckId, node: TmplAstComponent | TmplAstDirective) {
     this.pushDiagnostic(
       id,
-      `Incorrect reference type. Type must be a standalone @Component or @Directive.`,
+      `Incorrect reference type. Type must be a standalone ${node instanceof TmplAstComponent ? '@Component' : '@Directive'}.`,
       node.startSourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8001,
+      Math.abs(ErrorCode.INCORRECT_NAMED_TEMPLATE_DEPENDENCY_TYPE),
     );
   }
 
@@ -373,11 +426,12 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
   ) {
     this.pushDiagnostic(
       id,
-      `Directive ${directive.name} does not have an input or output named "${node.name}". ` +
+      `Directive ${directive.name} does not have an ` +
+        `${node instanceof TmplAstBoundEvent ? 'output' : 'input'} named "${node.name}". ` +
         `Bindings to directives must target existing inputs or outputs.`,
       node.keySpan || node.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8018,
+      Math.abs(ErrorCode.UNCLAIMED_DIRECTIVE_BINDING),
     );
   }
 
@@ -393,7 +447,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       'Trigger with no target can only be placed on an @defer that has a @placeholder block',
       trigger.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8019,
+      Math.abs(ErrorCode.DEFER_IMPLICIT_TRIGGER_MISSING_PLACEHOLDER),
     );
   }
 
@@ -410,7 +464,7 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         '@placeholder block with exactly one root element node',
       trigger.sourceSpan,
       OutOfBandDiagnosticCategory.Error,
-      8019,
+      Math.abs(ErrorCode.DEFER_IMPLICIT_TRIGGER_INVALID_PLACEHOLDER),
     );
   }
 
@@ -424,6 +478,8 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
         name = `[${node.name}]`;
       } else if (node.type === BindingType.Attribute) {
         name = `[attr.${node.name}]`;
+      } else if (node.type === BindingType.TwoWay) {
+        name = `[(${node.name})]`;
       } else {
         // We shouldn't hit this, but we have this logic as a fallback.
         name = node.name;
@@ -434,7 +490,13 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
       message = `Setting the '${node.name}' attribute is not allowed on nodes using the '[formField]' directive`;
     }
 
-    this.pushDiagnostic(id, message, node.sourceSpan, OutOfBandDiagnosticCategory.Error, 8020);
+    this.pushDiagnostic(
+      id,
+      message,
+      node.sourceSpan,
+      OutOfBandDiagnosticCategory.Error,
+      Math.abs(ErrorCode.FORM_FIELD_UNSUPPORTED_BINDING),
+    );
   }
 
   multipleMatchingComponents(id: TypeCheckId, element: TmplAstElement, componentNames: string[]) {
@@ -442,9 +504,9 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
     this.pushDiagnostic(
       id,
       `Multiple components match node with tagname ${element.name}: ${names}.`,
-      element.startSourceSpan,
+      this.getTagNameSpan(element),
       OutOfBandDiagnosticCategory.Error,
-      8001,
+      Math.abs(ErrorCode.MULTIPLE_MATCHING_COMPONENTS),
     );
   }
 
@@ -456,6 +518,45 @@ export class OutOfBandDiagnosticRecorderImpl implements OutOfBandDiagnosticRecor
     classPropertyName: string,
     aliases: string[],
   ): void {
-    // TODO(parity): report ngtsc's CONFLICTING_HOST_DIRECTIVE_BINDING (-8024) diagnostic.
+    const message =
+      `${kind === 'input' ? 'Input' : 'Output'} declared in ${directiveName}.${classPropertyName} ` +
+      `is exposed under the following conflicting names: ${aliases.map((a) => `"${a}"`).join(', ')}. ` +
+      `An ${kind} can only be exposed under a single name.`;
+
+    this.pushDiagnostic(
+      id,
+      message,
+      this.getTagNameSpan(node),
+      OutOfBandDiagnosticCategory.Error,
+      Math.abs(ErrorCode.CONFLICTING_HOST_DIRECTIVE_BINDING),
+    );
+  }
+
+  private getTagNameSpan(
+    node: TmplAstElement | TmplAstTemplate | TmplAstComponent | TmplAstDirective,
+  ): ParseSourceSpan {
+    let span: ParseSourceSpan;
+    let name: string | null;
+
+    if (node instanceof TmplAstElement || node instanceof TmplAstDirective) {
+      name = node.name;
+    } else if (node instanceof TmplAstComponent) {
+      name = node.componentName;
+    } else {
+      name = null;
+    }
+
+    if (name === null) {
+      span = node.startSourceSpan;
+    } else {
+      // Only highlight the tag name since highlighting the entire start tag can be noisy.
+      const start = node.startSourceSpan.start.moveBy(1);
+      const end = node.startSourceSpan.end.moveBy(
+        start.offset + name.length - node.startSourceSpan.end.offset,
+      );
+      span = new ParseSourceSpan(start, end);
+    }
+
+    return span;
   }
 }

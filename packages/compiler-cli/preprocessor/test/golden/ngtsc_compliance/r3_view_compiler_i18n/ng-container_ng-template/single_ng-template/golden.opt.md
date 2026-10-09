@@ -18,6 +18,7 @@ function _tcb1(this: i0.MyComponent) {
 
 /* Diagnostics:
  - (157, 166) No pipe found with name 'uppercase'.
+To fix this, import the "UpperCasePipe" class from "@angular/common" and add it to the "imports" array of the module declaring the component.
 */
 
 ```
@@ -162,7 +163,7 @@ export class MyModule {
       "filePath": "/single_ng-template.ts",
       "category": "error",
       "code": 8004,
-      "messageText": "No pipe found with name 'uppercase'.",
+      "messageText": "No pipe found with name 'uppercase'.\nTo fix this, import the \"UpperCasePipe\" class from \"@angular/common\" and add it to the \"imports\" array of the module declaring the component.",
       "span": {
         "start": 157,
         "end": 166
