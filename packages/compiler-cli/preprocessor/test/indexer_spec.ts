@@ -24,13 +24,13 @@ import {buildTypeCheckingConfig} from '../src/tcb.js';
 import {IndexerVisitor} from '@angular/compiler';
 import {getIndexedComponents, IndexerBoundTemplate} from '../src/indexing/indexer.js';
 import {createAnalyzer} from '../api.js';
-import {resolveWasmBinding} from './utils.js';
+import {getOrCreateSyntheticNodeModules, resolveWasmBinding} from './utils.js';
 
 async function setupCompiler(content: string, options?: {strictTemplates?: boolean}) {
   const projectRoot = process.cwd();
   const filePath = join(projectRoot, 'test.ts');
   const tsconfigPath = join(projectRoot, 'tsconfig.json');
-  const nodeModulesPath = join(projectRoot, 'node_modules');
+  const nodeModulesPath = getOrCreateSyntheticNodeModules() ?? join(projectRoot, 'node_modules');
 
   const virtualFiles = {
     [filePath]: content,
@@ -62,7 +62,7 @@ async function setupMultiFileCompiler(
 ) {
   const projectRoot = process.cwd();
   const tsconfigPath = join(projectRoot, 'tsconfig.json');
-  const nodeModulesPath = join(projectRoot, 'node_modules');
+  const nodeModulesPath = getOrCreateSyntheticNodeModules() ?? join(projectRoot, 'node_modules');
 
   const virtualFiles: Record<string, string> = {};
   const filePaths: string[] = [];

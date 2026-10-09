@@ -83,12 +83,13 @@ export function resolveWasmBinding(): string {
   );
 }
 
-function resolvePackagePath(pkg: string): string | null {
+export function resolvePackagePath(pkg: string): string | null {
   const runfilesDir = process.env['JS_BINARY__RUNFILES'] || process.env['RUNFILES_DIR'];
   if (runfilesDir) {
     const candidates = [
       path.join(runfilesDir, `_main/packages/${pkg}/npm_package`),
       path.join(runfilesDir, `angular/packages/${pkg}/npm_package`),
+      path.join(runfilesDir, `packages/${pkg}/npm_package`),
     ];
     for (const c of candidates) {
       if (fsSync.existsSync(c)) {
@@ -110,7 +111,7 @@ function resolvePackagePath(pkg: string): string | null {
 
 let syntheticNodeModules: string | null = null;
 export function getOrCreateSyntheticNodeModules(): string | null {
-  if (syntheticNodeModules) return syntheticNodeModules;
+  if (syntheticNodeModules && fsSync.existsSync(syntheticNodeModules)) return syntheticNodeModules;
   const corePath = resolvePackagePath('core');
   if (!corePath) return null;
   const tmpRoot = process.env['TEST_TMPDIR'] || os.tmpdir();
@@ -123,6 +124,7 @@ export function getOrCreateSyntheticNodeModules(): string | null {
       const symlink = path.join(angularDir, pkg);
       if (!fsSync.existsSync(symlink)) {
         try {
+          fsSync.rmSync(symlink, {force: true});
           fsSync.symlinkSync(pkgPath, symlink, 'junction');
         } catch {}
       }
@@ -262,18 +264,24 @@ export async function runPipeline(
   const maybeFormat = (p: string, content: string): Promise<string> =>
     options.format === false ? Promise.resolve(content) : formatContent(p, content);
 
-  // Find real node_modules path (walk up from current dir)
-  let nodeModulesPath = process.cwd();
-  while (!(await pathExists(path.join(nodeModulesPath, 'node_modules', '@angular')))) {
-    const parent = path.dirname(nodeModulesPath);
-    if (parent === nodeModulesPath) break;
-    nodeModulesPath = parent;
-  }
-  const candidatePath = path.join(nodeModulesPath, 'node_modules');
-  if (await pathExists(path.join(candidatePath, '@angular'))) {
-    nodeModulesPath = candidatePath;
+  const synthetic = getOrCreateSyntheticNodeModules();
+  let nodeModulesPath: string;
+  if (synthetic) {
+    nodeModulesPath = synthetic;
   } else {
-    nodeModulesPath = getOrCreateSyntheticNodeModules() || candidatePath;
+    // Walk up from current dir to find a built node_modules/@angular/core/index.d.ts
+    let dir = process.cwd();
+    while (!(await pathExists(path.join(dir, 'node_modules', '@angular')))) {
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    const candidatePath = path.join(dir, 'node_modules');
+    if (await pathExists(path.join(candidatePath, '@angular', 'core', 'index.d.ts'))) {
+      nodeModulesPath = candidatePath;
+    } else {
+      nodeModulesPath = path.join(process.cwd(), 'node_modules');
+    }
   }
 
   const virtualFiles: Record<string, string> = {};

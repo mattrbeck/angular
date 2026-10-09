@@ -9,7 +9,7 @@
 import {createRequire} from 'node:module';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import {pathExists, resolveWasmBinding} from './utils.js';
+import {resolvePackagePath, resolveWasmBinding} from './utils.js';
 import {createNodeHostFs} from '../src/wasm_host_fs.js';
 
 const require = createRequire(import.meta.url);
@@ -50,24 +50,7 @@ async function writeFixture(name: string): Promise<string> {
   );
 
   // Link @angular/core from runfiles if available
-  const runfilesDir = process.env['JS_BINARY__RUNFILES'];
-  let corePackagePath: string | null = null;
-  if (runfilesDir) {
-    const candidates = [
-      path.join(runfilesDir, '_main/packages/core/npm_package'),
-      path.join(runfilesDir, 'angular/packages/core/npm_package'),
-      path.join(runfilesDir, 'packages/core/npm_package'),
-    ];
-    for (const c of candidates) {
-      try {
-        if (await pathExists(c)) {
-          corePackagePath = c;
-          break;
-        }
-      } catch {}
-    }
-  }
-
+  const corePackagePath = resolvePackagePath('core');
   const nodeModulesDir = path.join(root, 'node_modules/@angular');
   await fs.mkdir(nodeModulesDir, {recursive: true});
   if (corePackagePath) {
