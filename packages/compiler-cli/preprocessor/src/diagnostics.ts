@@ -25,7 +25,7 @@ import {
   getTcbPath,
   isTcbFunction,
 } from './tcb_ls_util.js';
-import {hasIgnoreForDiagnosticsMarker} from './comments.js';
+import {hasIgnoreForDiagnosticsMarker} from '@angular/compiler-cli/private/hybrid_analysis';
 import {makeClassKey} from './compiler-utils.js';
 
 const IGNORE_MARKER_REGEX = /\/\*\s*D:ignore\s*\*\//;

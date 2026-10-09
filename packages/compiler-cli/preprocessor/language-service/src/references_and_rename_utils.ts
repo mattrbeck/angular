@@ -25,13 +25,21 @@ import {
   CssSelector,
   ExpressionIdentifier,
 } from '@angular/compiler';
-import {hasExpressionIdentifier} from '@angular/compiler-cli/private/hybrid_analysis';
+import {
+  hasExpressionIdentifier,
+  readSpanComment,
+} from '@angular/compiler-cli/private/hybrid_analysis';
 import ts from 'typescript';
 import {Location, Range} from 'vscode-languageserver';
 import {URI} from 'vscode-uri';
 import {fileURLToPath} from 'node:url';
 
-import {getTargetAtPosition, TargetNodeKind} from '@angular/language-service/private';
+import {
+  getTargetAtPosition,
+  TargetNodeKind,
+  findTightestNode,
+  getParentClassDeclaration,
+} from '@angular/language-service/private';
 import {SymbolKind} from './symbols.js';
 import {TemplateTypeChecker} from './type_checker.js';
 import {SetupResult} from './type_checker_setup.js';
@@ -43,10 +51,11 @@ import {
   isTcbFunction,
   getTcbPath,
 } from '../../src/tcb_ls_util.js';
-import {readSpanComment} from '../../src/comments.js';
 import {isWithin, getDirectiveMatchesForAttribute, canonicalizePath} from './utils.js';
 import {makeClassKey} from '../../src/compiler-utils.js';
 import {ClassMetadata} from '../../src/types.js';
+
+export {findTightestNode, getParentClassDeclaration};
 
 export interface FilePosition {
   fileName: string;
@@ -62,24 +71,6 @@ export interface TemplateLocationDetails {
 export interface RenameTextAndSpan {
   text: string;
   span: {start: number; length: number};
-}
-
-export function findTightestNode(node: ts.Node, position: number): ts.Node | undefined {
-  if (node.getStart() <= position && position < node.getEnd()) {
-    return node.forEachChild((c) => findTightestNode(c, position)) ?? node;
-  }
-  return undefined;
-}
-
-export function getParentClassDeclaration(startNode: ts.Node): ts.ClassDeclaration | undefined {
-  let curr: ts.Node | undefined = startNode;
-  while (curr) {
-    if (ts.isClassDeclaration(curr)) {
-      return curr;
-    }
-    curr = curr.parent;
-  }
-  return undefined;
 }
 
 export function collectMemberMethods(clazz: ts.ClassDeclaration): ts.MethodDeclaration[] {

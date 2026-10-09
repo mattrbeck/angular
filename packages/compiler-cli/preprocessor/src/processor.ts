@@ -80,7 +80,7 @@ import {
 } from './compiler-utils.js';
 import {ExpressionPrinter, RawSource} from './output_ast_printer.js';
 import MagicString from 'magic-string';
-import {analyzeTemplateForSelectorless} from './selectorless.js';
+import {analyzeTemplateForSelectorless} from '@angular/compiler-cli/private/hybrid_analysis';
 import {analyzeForeignComponentFeatures} from './foreign_component.js';
 import {lineNumberAtOffset} from './tcb_util.js';
 import type {IAnalyzer} from './hybrid_compiler.js';

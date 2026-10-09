@@ -9,6 +9,7 @@
 import {
   isUnsafeObjectKey,
   R3Identifiers,
+  TcbEnvironment,
   TcbExpr,
   TcbTypeParameter,
   TypeCtorMetadata,
@@ -22,7 +23,7 @@ import {ReferenceEmitEnvironment} from './reference_emit_environment';
 import {checkIfGenericTypeBoundsCanBeEmitted, generateTcbTypeParameters} from './tcb_util';
 
 export function generateTypeCtorDeclarationFn(
-  env: ReferenceEmitEnvironment,
+  env: Pick<TcbEnvironment, 'referenceExternalSymbol'>,
   meta: TypeCtorMetadata,
   nodeTypeRef: TcbExpr,
   typeParams: TcbTypeParameter[] | undefined,
@@ -107,7 +108,7 @@ export function generateInlineTypeCtor(
 }
 
 function constructTypeCtorParameter(
-  env: ReferenceEmitEnvironment,
+  env: Pick<TcbEnvironment, 'referenceExternalSymbol'>,
   meta: TypeCtorMetadata,
   typeRef: string,
   typeRefWithGenerics: string,
