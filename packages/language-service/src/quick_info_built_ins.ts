@@ -159,7 +159,7 @@ export function createQuickInfoForBuiltIn(
 }
 
 const triggerDescriptionPreamble = 'A trigger to start loading the defer content after ';
-const BUILT_IN_NAMES_TO_DOC_MAP: {
+export const BUILT_IN_NAMES_TO_DOC_MAP: {
   [name: string]: {docString: string; links: string[]; displayInfoKind: DisplayInfoKind};
 } = {
   '@defer': {

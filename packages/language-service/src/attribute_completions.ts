@@ -424,7 +424,7 @@ export function buildAttributeCompletionTable(
   return table;
 }
 
-function buildSnippet(insertSnippet: true | undefined, text: string): string | undefined {
+export function buildSnippet(insertSnippet: true | undefined, text: string): string | undefined {
   return insertSnippet ? `${text.replace(/\$/gi, '\\$')}="$1"` : undefined;
 }
 
@@ -653,14 +653,17 @@ export function getAttributeCompletionSymbol(
  * Iterates over `CssSelector` attributes, which are internally represented in a zipped array style
  * which is not conducive to straightforward iteration.
  */
-function* selectorAttributes(selector: CssSelector): Iterable<[string, string]> {
+export function* selectorAttributes(selector: CssSelector): Iterable<[string, string]> {
   for (let i = 0; i < selector.attrs.length; i += 2) {
     yield [selector.attrs[0], selector.attrs[1]];
   }
 }
 
-function getStructuralAttributes(meta: TypeCheckableDirectiveMeta): string[] {
-  if (meta.selector === null) {
+export function getStructuralAttributes(meta: {
+  selector?: string | null;
+  inputs?: {hasBindingPropertyName(propertyName: string): boolean};
+}): string[] {
+  if (!meta.selector) {
     return [];
   }
 
@@ -706,7 +709,7 @@ function getStructuralAttributes(meta: TypeCheckableDirectiveMeta): string[] {
       }
 
       // Non-base attributes must also correspond to directive inputs.
-      if (!meta.inputs.hasBindingPropertyName(attr)) {
+      if (meta.inputs && !meta.inputs.hasBindingPropertyName(attr)) {
         return false;
       }
 

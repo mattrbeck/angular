@@ -12,6 +12,7 @@ ts_project(
         "//:node_modules/typescript",
         "//packages/compiler",
         "//packages/compiler-cli",
+        "//packages/compiler-cli/private",
         "//packages/compiler-cli/src/ngtsc/core",
         "//packages/compiler-cli/src/ngtsc/core:api",
         "//packages/compiler-cli/src/ngtsc/diagnostics",
