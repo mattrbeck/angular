@@ -15,4 +15,5 @@ export interface Diagnostic {
   readonly message: string;
   readonly start: number;
   readonly end: number;
+  readonly source?: 'template' | 'host';
 }

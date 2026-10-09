@@ -35,14 +35,20 @@ import {
   ParseSourceSpan,
 } from '@angular/compiler';
 
+import {ErrorCode} from '@angular/compiler-cli/private/hybrid_analysis';
+
 import * as nga from './types.js';
 
-/** Error codes for the diagnostics below, mirroring ngtsc's `ErrorCode` members. */
-const FOREIGN_COMPONENT_UNSUPPORTED_BINDING = 8025;
-const INVALID_CONTENT_PLACEMENT = 8026;
-const FOREIGN_COMPONENT_CONTENT_UNNECESSARY_FOR_CHILDREN = 8027;
-const CONFLICTING_CONTENT_DECLARATION = 8028;
-const CONFLICTING_CONTENT_AND_PROPERTY = 8029;
+/** Error codes for the diagnostics below, sourced from ngtsc's `ErrorCode` enum. */
+const FOREIGN_COMPONENT_UNSUPPORTED_BINDING = Math.abs(
+  ErrorCode.FOREIGN_COMPONENT_UNSUPPORTED_BINDING,
+);
+const INVALID_CONTENT_PLACEMENT = Math.abs(ErrorCode.INVALID_CONTENT_PLACEMENT);
+const FOREIGN_COMPONENT_CONTENT_UNNECESSARY_FOR_CHILDREN = Math.abs(
+  ErrorCode.FOREIGN_COMPONENT_CONTENT_UNNECESSARY_FOR_CHILDREN,
+);
+const CONFLICTING_CONTENT_DECLARATION = Math.abs(ErrorCode.CONFLICTING_CONTENT_DECLARATION);
+const CONFLICTING_CONTENT_AND_PROPERTY = Math.abs(ErrorCode.CONFLICTING_CONTENT_AND_PROPERTY);
 
 /**
  * The intrinsic property name used to project children into a foreign component.

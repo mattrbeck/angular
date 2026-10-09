@@ -87,7 +87,7 @@ export function createOutputPropertyMapping(
       obj[classProp] = {
         classPropertyName: classProp,
         bindingPropertyName: bindingName,
-        isSignal: false,
+        isSignal: item.isSignal ?? false,
       };
     }
   }
@@ -312,8 +312,6 @@ export function adaptTcbInput(
         }
       : undefined,
   });
-  // Monkey-patch missing method in reference compiler
-  boundTarget.getConflictingHostDirectiveBindings ??= () => null;
 
   let pipes = null as Map<string, TcbPipeMetadata> | null;
 
@@ -514,7 +512,7 @@ function declarationToMetadata(
           i.isCoerced = true;
         }
       }
-      return createInputPropertyMapping(inputsList, content);
+      return createInputPropertyMapping(inputsList, isSameFile ? content : undefined);
     })(),
     outputs: (() => {
       const outputsList: nga.OutputMetadata[] = [];

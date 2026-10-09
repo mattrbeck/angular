@@ -28,5 +28,6 @@ export {
   SymbolBoundTarget,
   SymbolDirectiveMeta,
 } from '../src/ngtsc/typecheck/src/template_symbol_builder';
+export {ErrorCode, ngErrorCode} from '../src/ngtsc/diagnostics';
 
 export * from '../src/ngtsc/indexer';
