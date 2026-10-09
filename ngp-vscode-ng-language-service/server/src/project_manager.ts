@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import {readConfiguration} from '@angular/compiler-cli';
 import {API, Snapshot} from '@typescript/native-preview/unstable/async';
 import {HybridCompiler} from '../../../packages/compiler-cli/preprocessor/src/hybrid_compiler.js';
-import {NapiAnalyzer} from '../../../packages/compiler-cli/preprocessor/src/analyzer_napi.js';
+import {createAnalyzer} from '../../../packages/compiler-cli/preprocessor/api.js';
 import {buildTypeCheckingConfig} from '../../../packages/compiler-cli/preprocessor/src/tcb';
 import {LanguageService} from '../../../packages/compiler-cli/preprocessor/language-service/src/language_service';
 import {TsGoFacade} from '../../../packages/compiler-cli/preprocessor/language-service/src/facade';
@@ -147,7 +147,7 @@ export class ProjectManager {
       const config = readConfiguration(tsconfigPath);
       const tcbConfig = buildTypeCheckingConfig(config.options, true);
 
-      const analyzer = await NapiAnalyzer.create(tsconfigPath, {
+      const analyzer = await createAnalyzer(tsconfigPath, {
         nodeModulesPathOverride: this.nodeModulesPathOverride,
       });
 

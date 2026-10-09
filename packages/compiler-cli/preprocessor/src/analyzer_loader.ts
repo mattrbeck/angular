@@ -152,7 +152,7 @@ function requestedBackend(options: LoadAnalyzerOptions): AnalyzerBackend | null 
   if (options.useWasm) {
     return 'wasm';
   }
-  const fromEnv = process.env['NG_EXP_COMPILER_BACKEND'];
+  const fromEnv = process.env['NGP_COMPILER_BACKEND'] || process.env['NG_EXP_COMPILER_BACKEND'];
   if (fromEnv === 'native' || fromEnv === 'wasm') {
     return fromEnv;
   }
@@ -193,18 +193,54 @@ async function wasmCandidates(options: LoadAnalyzerOptions): Promise<Candidate[]
     }
   };
 
-  const [ngAnalyzeWasmDirIndex, inRepoWasm] = await Promise.all([
+  const runfilesDir = process.env['JS_BINARY__RUNFILES'] || process.env['RUNFILES_DIR'];
+  const bazelWasmRel = path.join(
+    'packages',
+    'compiler-cli',
+    'preprocessor',
+    'ng-analyze',
+    'ng_analyze_wasm',
+    'ng_analyze_wasm.js',
+  );
+
+  const [
+    ngAnalyzeWasmSubdir,
+    ngAnalyzeWasmDirIndex,
+    runfilesMainWasm,
+    runfilesAngularWasm,
+    runfilesDirectWasm,
+    inRepoBazelLocalWasm,
+    inRepoBazelDistWasm,
+    inRepoWasm,
+  ] = await Promise.all([
+    options.ngAnalyzeDir
+      ? existingPath(path.join(options.ngAnalyzeDir, 'ng_analyze_wasm', 'ng_analyze_wasm.js'))
+      : null,
     options.ngAnalyzeDir
       ? existingPath(path.join(options.ngAnalyzeDir, '..', 'ng-analyze-wasm', 'ng_analyze.js'))
       : null,
+    runfilesDir ? existingPath(path.join(runfilesDir, '_main', bazelWasmRel)) : null,
+    runfilesDir ? existingPath(path.join(runfilesDir, 'angular', bazelWasmRel)) : null,
+    runfilesDir ? existingPath(path.join(runfilesDir, bazelWasmRel)) : null,
+    !IS_INSTALLED
+      ? walkUpFor(path.join('ng-analyze', 'ng_analyze_wasm', 'ng_analyze_wasm.js'))
+      : null,
+    !IS_INSTALLED ? walkUpFor(path.join('dist', 'bin', bazelWasmRel)) : null,
     !IS_INSTALLED ? walkUpFor(path.join('ng-analyze-wasm', 'ng_analyze.js')) : null,
   ]);
 
   push(options.wasmBinding, 'wasmBinding option');
+  push(process.env['NGP_WASM_BINDING'], 'NGP_WASM_BINDING');
   push(process.env['NG_EXP_COMPILER_WASM_BINDING'], 'NG_EXP_COMPILER_WASM_BINDING');
+  push(ngAnalyzeWasmSubdir, 'ngAnalyzeDir option (bazel wasm)');
   push(ngAnalyzeWasmDirIndex, 'ngAnalyzeDir option');
-  push('ng-exp-compiler-arch-wasm', 'ng-exp-compiler-arch-wasm package');
+  push(runfilesMainWasm, 'bazel runfiles (_main)');
+  push(runfilesAngularWasm, 'bazel runfiles (angular)');
+  push(runfilesDirectWasm, 'bazel runfiles');
+  push(inRepoBazelLocalWasm, 'in-repo ng-analyze/ng_analyze_wasm/');
+  push(inRepoBazelDistWasm, 'in-repo dist/bin ng-analyze/ng_analyze_wasm/');
   push(inRepoWasm, 'in-repo ng-analyze-wasm/');
+  push('ng-exp-compiler-arch-wasm', 'ng-exp-compiler-arch-wasm package');
 
   return out;
 }
@@ -302,15 +338,19 @@ function noAnalyzerError(
 
   const remedy = strict
     ? 'A specific backend was requested, so no fallback was attempted. Unset ' +
-      'NG_EXP_COMPILER_BACKEND / NG_EXP_FORCE_WASM (or drop the `backend` option) to allow fallback.'
-    : [
-        'The engines ship as optionalDependencies. Package managers skip optional',
-        'dependencies when installed with --omit=optional / --no-optional, or when a',
-        'lockfile was generated on a different platform (npm/cli#4828).',
-        '',
-        'Fix:  npm install --save-optional ng-exp-compiler-arch-wasm',
-        ' or:  rm -rf node_modules package-lock.json && npm install',
-      ].join('\n');
+      'NGP_COMPILER_BACKEND / NG_EXP_COMPILER_BACKEND / NG_EXP_FORCE_WASM (or drop the `backend` option) to allow fallback.'
+    : !IS_INSTALLED
+      ? 'Build the in-repo WebAssembly analyzer target first:\n' +
+        '  pnpm bazel build //packages/compiler-cli/preprocessor/ng-analyze:wasm\n' +
+        'or point NGP_WASM_BINDING at a built ng_analyze_wasm.js file.'
+      : [
+          'The engines ship as optionalDependencies. Package managers skip optional',
+          'dependencies when installed with --omit=optional / --no-optional, or when a',
+          'lockfile was generated on a different platform (npm/cli#4828).',
+          '',
+          'Fix:  npm install --save-optional ng-exp-compiler-arch-wasm',
+          ' or:  rm -rf node_modules package-lock.json && npm install',
+        ].join('\n');
 
   const error = new Error(
     `Could not load the ng-exp-compiler analysis engine.\n\n` +

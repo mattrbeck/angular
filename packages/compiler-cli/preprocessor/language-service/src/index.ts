@@ -19,3 +19,4 @@ export * from './type_checker.js';
 export * from './references_and_rename.js';
 export * from './references_and_rename_utils.js';
 export * from './signature_help.js';
+export * from './tcb_diagnostics.js';

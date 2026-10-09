@@ -7,7 +7,7 @@
  */
 
 import {HybridCompiler} from '../../src/hybrid_compiler.js';
-import {mapDiagnostics} from '../../src/diagnostics.js';
+import {mapDiagnostics} from './tcb_diagnostics.js';
 import {Diagnostic} from 'vscode-languageserver';
 
 export async function handleDiagnostics(

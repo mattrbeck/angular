@@ -17,9 +17,6 @@ ts_project(
             "*.ts",
             "src/**/*.ts",
         ],
-        exclude = [
-            "src/diagnostics.ts",
-        ],
     ),
     tsconfig = ":tsconfig",
     deps = [
