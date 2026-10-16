@@ -122,12 +122,6 @@ function _tcb3(this: i0.SameNameComp) {
   }
 }
 
-/* Diagnostics:
- - (892, 904) 'local-tree' is not a known element:
-1. If 'local-tree' is an Angular component, then verify that it is included in the '@Component.imports' of this component.
-2. If 'local-tree' is a Web Component then add 'CUSTOM_ELEMENTS_SCHEMA' to the '@Component.schemas' of this component to suppress this message.
-*/
-
 ```
 
 # /out/tree.component.ts
@@ -221,7 +215,7 @@ export class TreeComponent {
         i0.ɵɵconditional(ctx.child ? 0 : -1);
       }
     },
-    dependencies: [DirA, TreeComponent],
+    dependencies: [TreeComponent, DirA],
     encapsulation: 2,
   });
   static {
@@ -299,7 +293,7 @@ export class ForwardTreeComponent {
         i0.ɵɵconditional(ctx.child ? 0 : -1);
       }
     },
-    dependencies: [DirA, ForwardTreeComponent],
+    dependencies: (): any => [ForwardTreeComponent, DirA],
     encapsulation: 2,
   });
   static {
@@ -365,7 +359,7 @@ export class SameNameComp {
         i0.ɵɵelement(0, 'other-tree')(1, 'local-tree');
       }
     },
-    dependencies: [OtherSameNameComp],
+    dependencies: [SameNameComp, OtherSameNameComp],
     encapsulation: 2,
   });
   static {
@@ -398,25 +392,5 @@ export class SameNameComp {
       lineNumber: 44,
     });
 })();
-
-```
-
-# /tsconfig.ngdiag.json
-```json
-{
-  "tsconfigPath": "/tsconfig.json",
-  "diagnostics": [
-    {
-      "filePath": "/tree.component.ts",
-      "category": "error",
-      "code": 8001,
-      "messageText": "'local-tree' is not a known element:\n1. If 'local-tree' is an Angular component, then verify that it is included in the '@Component.imports' of this component.\n2. If 'local-tree' is a Web Component then add 'CUSTOM_ELEMENTS_SCHEMA' to the '@Component.schemas' of this component to suppress this message.",
-      "span": {
-        "start": 892,
-        "end": 904
-      }
-    }
-  ]
-}
 
 ```
